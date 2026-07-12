@@ -79,6 +79,10 @@ Future<void> main() async {
   runApp(const ZombaHymnsApp());
 }
 
+Future<void> scheduleReminders() async {
+  await _scheduleDailyReminders();
+}
+
 Future<void> _initNotifications() async {
   const androidSettings = AndroidInitializationSettings('@mipmap/ic_launcher');
   const iosSettings = DarwinInitializationSettings(
@@ -104,9 +108,6 @@ Future<void> _initNotifications() async {
   await _notificationsPlugin
       .resolvePlatformSpecificImplementation<AndroidFlutterLocalNotificationsPlugin>()
       ?.requestNotificationsPermission();
-
-  // Schedule daily reminders
-  await _scheduleDailyReminders();
 }
 
 Future<void> _scheduleDailyReminders() async {
@@ -127,26 +128,112 @@ Future<void> _scheduleDailyReminders() async {
   const iosDetails = DarwinNotificationDetails();
   const notificationDetails = NotificationDetails(android: androidDetails, iOS: iosDetails);
 
-  // Schedule 3 reminders per day
-  final times = [
+  // Daily Bible reading reminders (3 times a day)
+  final dailyTimes = [
     tz.TZDateTime(tz.local, now.year, now.month, now.day, 8, 0),   // 8:00 AM
     tz.TZDateTime(tz.local, now.year, now.month, now.day, 14, 0),  // 2:00 PM
     tz.TZDateTime(tz.local, now.year, now.month, now.day, 20, 0),  // 8:00 PM
   ];
 
-  for (var i = 0; i < times.length; i++) {
-    final scheduledTime = times[i];
+  for (var i = 0; i < dailyTimes.length; i++) {
     await _notificationsPlugin.zonedSchedule(
       i,
       'ZOMBA ASSEMBLIES BIBLE READING REMINDER',
       shortText,
-      scheduledTime,
+      dailyTimes[i],
       notificationDetails,
-      androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
+      androidScheduleMode: AndroidScheduleMode.inexactAllowWhileIdle,
       uiLocalNotificationDateInterpretation: UILocalNotificationDateInterpretation.absoluteTime,
       matchDateTimeComponents: DateTimeComponents.time,
     );
   }
+
+  // Daily Morning Devotion (4:00 AM - 5:00 AM)
+  final devotionTime = tz.TZDateTime(tz.local, now.year, now.month, now.day, 4, 0);
+  await _notificationsPlugin.zonedSchedule(
+    100,
+    'DAILY MORNING DEVOTION',
+    'Join us for Daily Morning Devotion from 4-5am. Meet at Church or Join Online via WhatsApp.',
+    devotionTime,
+    notificationDetails,
+    androidScheduleMode: AndroidScheduleMode.inexactAllowWhileIdle,
+    uiLocalNotificationDateInterpretation: UILocalNotificationDateInterpretation.absoluteTime,
+    matchDateTimeComponents: DateTimeComponents.time,
+  );
+
+  // Wednesday Midweek Players (5:00 PM)
+  final wednesday5pm = _nextWeekday(DateTime.wednesday, 17, 0);
+  await _notificationsPlugin.zonedSchedule(
+    200,
+    'MIDWEEK PLAYERS',
+    'Every Wednesday Midweek Players from 5pm-6PM. Everyone is encouraged to attend or Join via WhatsApp group.',
+    wednesday5pm,
+    notificationDetails,
+    androidScheduleMode: AndroidScheduleMode.inexactAllowWhileIdle,
+    uiLocalNotificationDateInterpretation: UILocalNotificationDateInterpretation.absoluteTime,
+    matchDateTimeComponents: DateTimeComponents.dayOfWeekAndTime,
+  );
+
+  // Sunday Morning Service (6:15 AM)
+  final sundayMorning = _nextWeekday(DateTime.sunday, 6, 15);
+  await _notificationsPlugin.zonedSchedule(
+    300,
+    'SUNDAY Morning Service',
+    'Sunday Morning Service from 06:15am - 08:15am. You can also attend via Facebook: https://web.facebook.com/zombaassemblies',
+    sundayMorning,
+    notificationDetails,
+    androidScheduleMode: AndroidScheduleMode.inexactAllowWhileIdle,
+    uiLocalNotificationDateInterpretation: UILocalNotificationDateInterpretation.absoluteTime,
+    matchDateTimeComponents: DateTimeComponents.dayOfWeekAndTime,
+  );
+
+  // Sunday Second Service (8:30 AM)
+  final sundaySecond = _nextWeekday(DateTime.sunday, 8, 30);
+  await _notificationsPlugin.zonedSchedule(
+    301,
+    'SUNDAY Second Service',
+    'Sunday Second Service from 08:30am - 11:00am. You can also attend via Facebook: https://web.facebook.com/zombaassemblies',
+    sundaySecond,
+    notificationDetails,
+    androidScheduleMode: AndroidScheduleMode.inexactAllowWhileIdle,
+    uiLocalNotificationDateInterpretation: UILocalNotificationDateInterpretation.absoluteTime,
+    matchDateTimeComponents: DateTimeComponents.dayOfWeekAndTime,
+  );
+
+  // Tuesday OMC Meeting (Women Ministry) - 9:00 AM
+  final tuesdayOMC = _nextWeekday(DateTime.tuesday, 9, 0);
+  await _notificationsPlugin.zonedSchedule(
+    400,
+    'TUESDAY OMC Meeting',
+    'Every Tuesday OMC meeting in the morning. This is a meeting of Women Ministry members.',
+    tuesdayOMC,
+    notificationDetails,
+    androidScheduleMode: AndroidScheduleMode.inexactAllowWhileIdle,
+    uiLocalNotificationDateInterpretation: UILocalNotificationDateInterpretation.absoluteTime,
+    matchDateTimeComponents: DateTimeComponents.dayOfWeekAndTime,
+  );
+
+  // Tuesday Homecell Players - 6:00 PM
+  final tuesdayHomecell = _nextWeekday(DateTime.tuesday, 18, 0);
+  await _notificationsPlugin.zonedSchedule(
+    401,
+    'HOMECELL PLAYERS',
+    'Every Tuesday Homecell Players. Gather at your Local Homecells.',
+    tuesdayHomecell,
+    notificationDetails,
+    androidScheduleMode: AndroidScheduleMode.inexactAllowWhileIdle,
+    uiLocalNotificationDateInterpretation: UILocalNotificationDateInterpretation.absoluteTime,
+    matchDateTimeComponents: DateTimeComponents.dayOfWeekAndTime,
+  );
+}
+
+tz.TZDateTime _nextWeekday(int weekday, int hour, int minute) {
+  final now = tz.TZDateTime.now(tz.local);
+  var daysUntilWeekday = weekday - now.weekday;
+  if (daysUntilWeekday <= 0) {
+    daysUntilWeekday += 7;
+  }
+  return tz.TZDateTime(tz.local, now.year, now.month, now.day + daysUntilWeekday, hour, minute);
 }
 
 class ZombaHymnsApp extends StatelessWidget {
@@ -1040,7 +1127,10 @@ class _HomeScreenState extends State<HomeScreen> {
     _countsFuture = hymnRepository.collectionCounts();
     _todayVerseFuture = fetchTodaysVerse();
     _checkForUpdate();
-    WidgetsBinding.instance.addPostFrameCallback((_) => _maybeShowWhatsNew(context));
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _maybeShowWhatsNew(context);
+      scheduleReminders();
+    });
   }
 
   Future<void> _checkForUpdate() async {
