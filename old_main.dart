@@ -8,47 +8,15 @@ import 'package:path/path.dart' as p;
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:sqflite/sqflite.dart';
 import 'package:http/http.dart' as http;
-import 'package:url_launcher/url_launcher.dart';
-import 'package:webview_flutter/webview_flutter.dart';
 
 
 const appName = 'ZAG Nyimbo za Chitsitsimutso';
 const brandTitle = 'Zomba Assemblies Hymns';
 const appTagline = 'Nyimbo za Chitsitsimutso';
-const appVersion = '1.7';
+const appVersion = '1.6';
 const logoAsset = 'adds/logo.png';
 const databaseAsset = 'adds/chitsitsimutso.db';
 const _themeModeKey = 'night_mode_enabled';
-const _readingLangKey = 'reading_language'; // 'chichewa' | 'english'
-const _fontSizeKey = 'global_font_size';
-
-// Global font-size scale (0.85 – 1.30), notifies listeners
-final fontSizeNotifier = ValueNotifier<double>(1.0);
-
-Future<void> _loadFontSize() async {
-  final prefs = await SharedPreferences.getInstance();
-  fontSizeNotifier.value = (prefs.getDouble(_fontSizeKey) ?? 1.0).clamp(0.85, 1.30);
-}
-
-Future<void> _saveFontSize(double v) async {
-  fontSizeNotifier.value = v;
-  final prefs = await SharedPreferences.getInstance();
-  await prefs.setDouble(_fontSizeKey, v);
-}
-
-// Reading language notifier
-final readingLangNotifier = ValueNotifier<String>('chichewa');
-
-Future<void> _loadReadingLang() async {
-  final prefs = await SharedPreferences.getInstance();
-  readingLangNotifier.value = prefs.getString(_readingLangKey) ?? 'chichewa';
-}
-
-Future<void> _saveReadingLang(String lang) async {
-  readingLangNotifier.value = lang;
-  final prefs = await SharedPreferences.getInstance();
-  await prefs.setString(_readingLangKey, lang);
-}
 
 const _navy = Color(0xFF1A3A8F);
 const _gold = Color(0xFFC89A3C);
@@ -70,7 +38,7 @@ final appTheme = AppThemeController();
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  await Future.wait([appTheme.load(), _loadFontSize(), _loadReadingLang()]);
+  await appTheme.load();
   runApp(const ZombaHymnsApp());
 }
 
@@ -956,8 +924,8 @@ class HomeScreen extends StatefulWidget {
 
 class _HomeScreenState extends State<HomeScreen> {
   late Future<Map<HymnCollection, int>> _countsFuture;
+
   late Future<TodaysVerse?> _todayVerseFuture;
-  final _scaffoldKey = GlobalKey<ScaffoldState>();
 
   @override
   void initState() {
@@ -969,52 +937,10 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Future<void> _checkForUpdate() async {
-    final result = await fetchLatestVersion();
-    if (result != null && mounted && _isNewerVersion(result.version, appVersion)) {
-      _showUpdateBanner(result.version, result.notes);
+    final latest = await fetchLatestVersion();
+    if (latest != null && mounted && _isNewerVersion(latest, appVersion)) {
+      _showUpdateDialog(context, latest);
     }
-  }
-
-  void _showUpdateBanner(String latest, String notes) {
-    if (!mounted) return;
-    ScaffoldMessenger.of(context).showMaterialBanner(
-      MaterialBanner(
-        padding: const EdgeInsets.fromLTRB(16, 10, 8, 10),
-        leading: const Icon(Icons.system_update_rounded, color: _gold),
-        backgroundColor: _isDark(context) ? _nightSurface : _paper,
-        dividerColor: Colors.transparent,
-        content: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Text(
-              'Version $latest is available!',
-              style: const TextStyle(fontWeight: FontWeight.w800),
-            ),
-            if (notes.isNotEmpty) ...[
-              const SizedBox(height: 4),
-              Text(
-                notes,
-                style: TextStyle(color: _mutedColor(context), fontSize: 12),
-              ),
-            ],
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () {
-              ScaffoldMessenger.of(context).hideCurrentMaterialBanner();
-              _scaffoldKey.currentState?.openDrawer();
-            },
-            child: const Text('View'),
-          ),
-          TextButton(
-            onPressed: () => ScaffoldMessenger.of(context).hideCurrentMaterialBanner(),
-            child: const Text('Dismiss'),
-          ),
-        ],
-      ),
-    );
   }
 
 
@@ -1050,12 +976,6 @@ class _HomeScreenState extends State<HomeScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      key: _scaffoldKey,
-      drawer: AppSettingsDrawer(
-        onReadingLangChanged: () => setState(() {
-          _todayVerseFuture = fetchTodaysVerse();
-        }),
-      ),
       body: PremiumBackground(
         child: SafeArea(
           left: false,
@@ -1070,17 +990,15 @@ class _HomeScreenState extends State<HomeScreen> {
                   Expanded(
                     child: CustomScrollView(
                       slivers: [
-                        SliverToBoxAdapter(
-                          child: HomeHeader(
-                            onMenuTap: () => _scaffoldKey.currentState?.openDrawer(),
-                          ),
-                        ),
+                        const SliverToBoxAdapter(child: HomeHeader()),
                         SliverPadding(
-                          padding: const EdgeInsets.fromLTRB(18, 16, 18, 18),
+                          padding:
+                              const EdgeInsets.fromLTRB(18, 16, 18, 18),
                           sliver: SliverList.list(
                             children: [
                               _DailyReadingCard(verseFuture: _todayVerseFuture),
                               const SizedBox(height: 14),
+                              // Chichewa + Chitumbuka side by side
                               Row(
                                 children: [
                                   Expanded(
@@ -1101,6 +1019,7 @@ class _HomeScreenState extends State<HomeScreen> {
                                 ],
                               ),
                               const SizedBox(height: 10),
+                              // English + Favourites side by side
                               Row(
                                 children: [
                                   Expanded(
@@ -1124,6 +1043,7 @@ class _HomeScreenState extends State<HomeScreen> {
                             ],
                           ),
                         ),
+
                       ],
                     ),
                   ),
@@ -1139,9 +1059,7 @@ class _HomeScreenState extends State<HomeScreen> {
 }
 
 class HomeHeader extends StatelessWidget {
-  const HomeHeader({required this.onMenuTap, super.key});
-
-  final VoidCallback onMenuTap;
+  const HomeHeader({super.key});
 
   @override
   Widget build(BuildContext context) {
@@ -1222,189 +1140,24 @@ class HomeHeader extends StatelessWidget {
                 ),
                 const SizedBox(width: 8),
                 HeaderActionButton(
-                  tooltip: 'Settings & Info',
-                  icon: Icons.menu_rounded,
-                  onPressed: onMenuTap,
+                  tooltip: appTheme.isDark
+                      ? 'Switch to day mode'
+                      : 'Switch to night mode',
+                  icon: appTheme.isDark
+                      ? Icons.light_mode_rounded
+                      : Icons.dark_mode_rounded,
+                  onPressed: appTheme.toggle,
+                ),
+                const SizedBox(width: 6),
+                HeaderActionButton(
+                  tooltip: 'Information',
+                  icon: Icons.info_outline_rounded,
+                  onPressed: () => showAppInfo(context),
                 ),
               ],
             ),
           ),
         ],
-      ),
-    );
-  }
-}
-
-class AppSettingsDrawer extends StatelessWidget {
-  const AppSettingsDrawer({required this.onReadingLangChanged, super.key});
-
-  final VoidCallback onReadingLangChanged;
-
-  @override
-  Widget build(BuildContext context) {
-    final dark = _isDark(context);
-    final bg = dark ? _nightSurface : _paper;
-    final textColor = _textColor(context);
-    final muted = _mutedColor(context);
-
-    return Drawer(
-      backgroundColor: bg,
-      child: SafeArea(
-        child: Column(
-          children: [
-            Container(
-              padding: const EdgeInsets.fromLTRB(20, 24, 20, 16),
-              decoration: BoxDecoration(
-                gradient: LinearGradient(
-                  colors: [Color(0xFF0D2B7A), _navy, Color(0xFF1565C0)],
-                  begin: Alignment.topLeft,
-                  end: Alignment.bottomRight,
-                ),
-              ),
-              child: Row(
-                children: [
-                  const LogoMark(size: 40),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Text(
-                          brandTitle,
-                          style: TextStyle(
-                            color: Colors.white,
-                            fontWeight: FontWeight.w900,
-                            fontSize: 16,
-                          ),
-                        ),
-                        const SizedBox(height: 2),
-                        Text(
-                          appTagline,
-                          style: TextStyle(
-                            color: const Color(0xFFBDD0F8),
-                            fontSize: 11,
-                            fontWeight: FontWeight.w600,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            Expanded(
-              child: ListView(
-                padding: const EdgeInsets.symmetric(vertical: 8),
-                children: [
-                  _DrawerTile(
-                    icon: dark ? Icons.light_mode_rounded : Icons.dark_mode_rounded,
-                    title: dark ? 'Day mode' : 'Night mode',
-                    onTap: () {
-                      appTheme.toggle();
-                      Navigator.of(context).pop();
-                    },
-                  ),
-                  _DrawerTile(
-                    icon: Icons.translate_rounded,
-                    title: readingLangNotifier.value == 'chichewa'
-                        ? 'Language: Chichewa'
-                        : 'Language: English',
-                    onTap: () {
-                      final newLang = readingLangNotifier.value == 'chichewa'
-                          ? 'english'
-                          : 'chichewa';
-                      _saveReadingLang(newLang);
-                      onReadingLangChanged();
-                      Navigator.of(context).pop();
-                    },
-                  ),
-                  _DrawerTile(
-                    icon: Icons.format_size_rounded,
-                    title: 'Font size',
-                    trailing: Text(
-                      '${(fontSizeNotifier.value * 100).toInt()}%',
-                      style: TextStyle(color: muted, fontSize: 13),
-                    ),
-                    onTap: () {
-                      final newSize = fontSizeNotifier.value == 1.0
-                          ? 1.15
-                          : fontSizeNotifier.value == 1.15
-                              ? 1.30
-                              : 0.85;
-                      _saveFontSize(newSize);
-                      Navigator.of(context).pop();
-                    },
-                  ),
-                  _DrawerTile(
-                    icon: Icons.share_rounded,
-                    title: 'Share app',
-                    onTap: () {
-                      Navigator.of(context).pop();
-                      launchUrl(Uri.parse(_apkPureUrl));
-                    },
-                  ),
-                  _DrawerTile(
-                    icon: Icons.info_outline_rounded,
-                    title: 'About',
-                    onTap: () {
-                      Navigator.of(context).pop();
-                      showAppInfo(context);
-                    },
-                  ),
-                ],
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _DrawerTile extends StatelessWidget {
-  const _DrawerTile({
-    required this.icon,
-    required this.title,
-    this.trailing,
-    required this.onTap,
-  });
-
-  final IconData icon;
-  final String title;
-  final Widget? trailing;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    final dark = _isDark(context);
-    final textColor = _textColor(context);
-
-    return InkWell(
-      onTap: onTap,
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
-        child: Row(
-          children: [
-            Icon(icon, color: textColor, size: 22),
-            const SizedBox(width: 16),
-            Expanded(
-              child: Text(
-                title,
-                style: TextStyle(color: textColor, fontSize: 15),
-              ),
-            ),
-            if (trailing != null) ...[
-              trailing!,
-              const SizedBox(width: 8),
-            ],
-            Icon(
-              Icons.chevron_right_rounded,
-              color: _mutedColor(context),
-              size: 20,
-            ),
-          ],
-        ),
       ),
     );
   }
@@ -2318,6 +2071,7 @@ class _HymnListScreenState extends State<HymnListScreen> {
       appBar: AppBar(
         title: Text(widget.collection.label),
         actions: [
+          const ThemeToggleIconButton(),
           IconButton(
             tooltip: 'Refresh',
             onPressed: _load,
@@ -2703,6 +2457,7 @@ class _HymnDetailScreenState extends State<HymnDetailScreen> {
       appBar: AppBar(
         title: Text('${hymn.collection == HymnCollection.chichewa ? 'Nyimbo' : hymn.collection == HymnCollection.tumbuka ? 'Sumu' : 'Hymn'} ${hymn.number}'),
         actions: [
+          const ThemeToggleIconButton(),
           IconButton(
             tooltip: _favourite ? 'Remove favourite' : 'Mark favourite',
             onPressed: () async {
@@ -2897,6 +2652,7 @@ Future<TodaysVerse?> fetchTodaysVerse() async {
     calendarRef = map[key]?.toString().trim();
   } catch (_) {}
 
+  // Use calendar ref if available, otherwise pick a daily fallback
   const fallbacks = [
     'John 3:16', 'Psalm 23:1', 'Romans 8:28', 'Philippians 4:13',
     'Jeremiah 29:11', 'Isaiah 40:31', 'Proverbs 3:5-6', 'Matthew 6:33',
@@ -2911,11 +2667,10 @@ Future<TodaysVerse?> fetchTodaysVerse() async {
       ? calendarRef!
       : fallbacks[now.millisecondsSinceEpoch % fallbacks.length];
 
-  final useChichewa = readingLangNotifier.value == 'chichewa';
-
   // 2. Try API.Bible — Chichewa (Baibulo Lopatulika 2016)
-  if (useChichewa && _apiBibleKey != 'YOUR-API-BIBLE-KEY-HERE') {
+  if (_apiBibleKey != 'YOUR-API-BIBLE-KEY-HERE') {
     try {
+      // Convert reference like "John 3:16" → passage ID "JHN.3.16"
       final passageId = _refToApiBibleId(ref);
       if (passageId != null) {
         final url = 'https://api.scripture.api.bible/v1/bibles/$_chichewaBibleId/passages/$passageId'
@@ -2936,7 +2691,7 @@ Future<TodaysVerse?> fetchTodaysVerse() async {
             return TodaysVerse(
               reference: reference,
               text: content,
-              translation: '2026 ZAG ANNUAL BIBLE READING PLAN',
+              translation: '2026 Bible Reading Plan',
             );
           }
         }
@@ -2944,7 +2699,7 @@ Future<TodaysVerse?> fetchTodaysVerse() async {
     } catch (_) {}
   }
 
-  // 3. Fallback / English — WEB via bible-api.com
+  // 3. Fallback — English WEB via bible-api.com
   final url = 'https://bible-api.com/${Uri.encodeComponent(ref)}?translation=web';
   try {
     final res = await http.get(Uri.parse(url)).timeout(const Duration(seconds: 10));
@@ -2953,7 +2708,7 @@ Future<TodaysVerse?> fetchTodaysVerse() async {
     final reference = (decoded['reference'] ?? '').toString().trim();
     final text = (decoded['text'] ?? '').toString().trim();
     if (reference.isEmpty || text.isEmpty) return null;
-    return TodaysVerse(reference: reference, text: text, translation: '2026 ZAG ANNUAL BIBLE READING PLAN');
+    return TodaysVerse(reference: reference, text: text, translation: 'WEB');
   } catch (_) {
     return null;
   }
@@ -3008,15 +2763,15 @@ String? _refToApiBibleId(String ref) {
   return '$bookCode.$chapter.$verseStart-$bookCode.$chapter.$verseEnd';
 }
 
-const _whatsNewKey = 'whats_new_seen_v1.7';
+const _whatsNewKey = 'whats_new_seen_v1.6';
 
 const _whatsNewItems = [
-  (icon: Icons.settings_rounded,          text: 'New Settings sidebar — all controls in one place'),
-  (icon: Icons.translate_rounded,         text: 'Bible reading language: choose Chichewa or English'),
-  (icon: Icons.format_size_rounded,       text: 'Global font size control in Settings'),
-  (icon: Icons.dark_mode_rounded,         text: 'Dark/light mode toggle moved to Settings sidebar'),
-  (icon: Icons.share_rounded,             text: 'Share the app directly from Settings'),
-  (icon: Icons.system_update_rounded,     text: 'Update banner — notified when a new version is out'),
+  (icon: Icons.movie_filter_rounded,      text: 'Animated splash screen with team credits'),
+  (icon: Icons.menu_book_rounded,         text: 'Daily Bible reading card with Chichewa text (API.Bible)'),
+  (icon: Icons.view_agenda_rounded,       text: 'Redesigned home — 2×2 collection cards layout'),
+  (icon: Icons.auto_stories_rounded,      text: 'Paged Bible reading — swipe through long chapters'),
+  (icon: Icons.person_rounded,            text: 'Senior Pastor credit added to Info screen'),
+  (icon: Icons.system_update_rounded,     text: 'In-app update checker from GitHub'),
 ];
 
 Future<void> _maybeShowWhatsNew(BuildContext context) async {
@@ -3189,17 +2944,14 @@ const _versionJsonUrl =
     'https://raw.githubusercontent.com/zagmedia/zaghymn/main/version.json';
 const _apkPureUrl = 'https://apkpure.com/zag-nyimbo-za-chitsitsimutso/com.zagmedia.zaghymn';
 
-Future<({String version, String notes})?> fetchLatestVersion() async {
+Future<String?> fetchLatestVersion() async {
   try {
     final res = await http
         .get(Uri.parse(_versionJsonUrl))
         .timeout(const Duration(seconds: 8));
     if (res.statusCode != 200) return null;
     final decoded = jsonDecode(res.body) as Map<String, dynamic>;
-    final version = decoded['version']?.toString().trim();
-    final notes = decoded['releaseNotes']?.toString().trim() ?? '';
-    if (version == null) return null;
-    return (version: version, notes: notes);
+    return decoded['version']?.toString().trim();
   } catch (_) {
     return null;
   }
@@ -3647,15 +3399,7 @@ class AppInfoDialog extends StatelessWidget {
                         _InfoCell(icon: Icons.tag_rounded, label: 'Version', value: appVersion),
                         _InfoCell(icon: Icons.verified_rounded, label: 'Copyright', value: '© 2026 ZAG'),
                         _InfoCell(icon: Icons.church_rounded, label: 'Senior Pastor', value: 'Rev Symon Msisya'),
-                        _InfoCell(
-                          icon: Icons.person_rounded,
-                          label: 'Lead Dev',
-                          value: 'Leonard JJ Mhone',
-                          onTap: () {
-                            final message = Uri.encodeComponent('Hello from ZAG Hymns APP');
-                            launchUrl(Uri.parse('https://wa.me/265992919716?text=$message'));
-                          },
-                        ),
+                        _InfoCell(icon: Icons.person_rounded, label: 'Lead Dev', value: 'Leonard JJ Mhone'),
                         _InfoCell(icon: Icons.groups_rounded, label: 'Team', value: 'ZAG Media Team'),
                       ]),
                     ],
@@ -3694,11 +3438,10 @@ class _InfoLabel extends StatelessWidget {
 }
 
 class _InfoCell {
-  const _InfoCell({required this.icon, required this.label, required this.value, this.onTap});
+  const _InfoCell({required this.icon, required this.label, required this.value});
   final IconData icon;
   final String label;
   final String value;
-  final VoidCallback? onTap;
 }
 
 class _InfoGrid extends StatelessWidget {
@@ -3738,7 +3481,7 @@ class _InfoGridCell extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final dark = _isDark(context);
-    final content = Container(
+    return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
       decoration: BoxDecoration(
         color: _surfaceColor(context, alpha: 0.80),
@@ -3768,64 +3511,6 @@ class _InfoGridCell extends StatelessWidget {
               ],
             ),
           ),
-        ],
-      ),
-    );
-
-    if (cell.onTap != null) {
-      return InkWell(
-        onTap: cell.onTap,
-        borderRadius: BorderRadius.circular(10),
-        child: content,
-      );
-    }
-
-    return content;
-  }
-}
-
-class RegistrationWebViewScreen extends StatefulWidget {
-  const RegistrationWebViewScreen({super.key});
-
-  @override
-  State<RegistrationWebViewScreen> createState() => _RegistrationWebViewScreenState();
-}
-
-class _RegistrationWebViewScreenState extends State<RegistrationWebViewScreen> {
-  late final WebViewController _controller;
-  bool _loading = true;
-
-  @override
-  void initState() {
-    super.initState();
-    _controller = WebViewController()
-      ..setJavaScriptMode(JavaScriptMode.unrestricted)
-      ..setNavigationDelegate(
-        NavigationDelegate(
-          onPageStarted: (_) => setState(() => _loading = true),
-          onPageFinished: (_) => setState(() => _loading = false),
-        ),
-      )
-      ..loadRequest(Uri.parse('https://zombaassemblies.ct.ws/'));
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final dark = _isDark(context);
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('Membership Registration'),
-        backgroundColor: dark ? _night : _paper,
-        foregroundColor: _textColor(context),
-        elevation: 0,
-      ),
-      body: Stack(
-        children: [
-          WebViewWidget(controller: _controller),
-          if (_loading)
-            const Center(
-              child: CircularProgressIndicator(),
-            ),
         ],
       ),
     );
