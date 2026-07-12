@@ -1047,6 +1047,14 @@ class _HomeScreenState extends State<HomeScreen> {
     }
   }
 
+  Future<void> _openMembershipRegistration() async {
+    await Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (_) => const RegistrationWebViewScreen(),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -1055,6 +1063,7 @@ class _HomeScreenState extends State<HomeScreen> {
         onReadingLangChanged: () => setState(() {
           _todayVerseFuture = fetchTodaysVerse();
         }),
+        onMembershipRegistration: _openMembershipRegistration,
       ),
       body: PremiumBackground(
         child: SafeArea(
@@ -1119,6 +1128,10 @@ class _HomeScreenState extends State<HomeScreen> {
                                     ),
                                   ),
                                 ],
+                              ),
+                              const SizedBox(height: 10),
+                              _MembershipCampaignBanner(
+                                onTap: _openMembershipRegistration,
                               ),
                               const SizedBox(height: 10),
                             ],
@@ -1236,9 +1249,14 @@ class HomeHeader extends StatelessWidget {
 }
 
 class AppSettingsDrawer extends StatelessWidget {
-  const AppSettingsDrawer({required this.onReadingLangChanged, super.key});
+  const AppSettingsDrawer({
+    required this.onReadingLangChanged,
+    this.onMembershipRegistration,
+    super.key,
+  });
 
   final VoidCallback onReadingLangChanged;
+  final VoidCallback? onMembershipRegistration;
 
   @override
   Widget build(BuildContext context) {
@@ -1342,6 +1360,14 @@ class AppSettingsDrawer extends StatelessWidget {
                     onTap: () {
                       Navigator.of(context).pop();
                       launchUrl(Uri.parse(_apkPureUrl));
+                    },
+                  ),
+                  _DrawerTile(
+                    icon: Icons.how_to_reg_rounded,
+                    title: 'Membership Registration',
+                    onTap: () {
+                      Navigator.of(context).pop();
+                      onMembershipRegistration?.call();
                     },
                   ),
                   _DrawerTile(
@@ -1894,6 +1920,87 @@ class _MiniCollectionCard extends StatelessWidget {
               ],
             ),
           ),
+        ),
+      ),
+    );
+  }
+}
+
+// ── Membership registration campaign banner ────────────────────────────
+class _MembershipCampaignBanner extends StatelessWidget {
+  const _MembershipCampaignBanner({required this.onTap});
+
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final dark = _isDark(context);
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(12),
+      child: Container(
+        padding: const EdgeInsets.all(14),
+        decoration: BoxDecoration(
+          gradient: LinearGradient(
+            colors: [
+              Color(0xFF0D2B7A).withValues(alpha: dark ? 0.85 : 0.75),
+              Color(0xFF1565C0).withValues(alpha: dark ? 0.75 : 0.65),
+            ],
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+          ),
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(
+            color: Color(0xFFBDD0F8).withValues(alpha: 0.35),
+          ),
+        ),
+        child: Row(
+          children: [
+            Container(
+              width: 40,
+              height: 40,
+              decoration: BoxDecoration(
+                color: Colors.white.withValues(alpha: 0.18),
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: const Icon(
+                Icons.how_to_reg_rounded,
+                color: Colors.white,
+                size: 22,
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    'Become a ZAG Member',
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontWeight: FontWeight.w900,
+                      fontSize: 14,
+                    ),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    'Register with Zomba Assemblies of God',
+                    style: TextStyle(
+                      color: Color(0xFFBDD0F8),
+                      fontSize: 11,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            Icon(
+              Icons.arrow_forward_rounded,
+              color: Colors.white.withValues(alpha: 0.8),
+              size: 20,
+            ),
+          ],
         ),
       ),
     );
