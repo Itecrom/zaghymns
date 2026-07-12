@@ -1976,7 +1976,7 @@ class _MembershipCampaignBanner extends StatelessWidget {
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   Text(
-                    'Become a ZAG Member',
+                    'Open Your ZAG membership Profile',
                     style: TextStyle(
                       color: Colors.white,
                       fontWeight: FontWeight.w900,
@@ -1985,11 +1985,20 @@ class _MembershipCampaignBanner extends StatelessWidget {
                   ),
                   const SizedBox(height: 2),
                   Text(
-                    'Register with Zomba Assemblies of God',
+                    'to be approved by your Homecell Pastor',
                     style: TextStyle(
-                      color: Color(0xFFBDD0F8),
+                      color: Colors.white,
                       fontSize: 11,
                       fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    'Lembetsani umembala wanu ku mpingo wa Zomba Assemblies ndipo a busa aku Mlaga wanu akubvomerezani',
+                    style: TextStyle(
+                      color: Color(0xFFBDD0F8),
+                      fontSize: 10,
+                      fontWeight: FontWeight.w500,
                     ),
                   ),
                 ],
@@ -3046,6 +3055,26 @@ Future<TodaysVerse?> fetchTodaysVerse() async {
               translation: '2026 ZAG ANNUAL BIBLE READING PLAN',
             );
           }
+        }
+      }
+    } catch (_) {}
+  }
+
+  // 2b. Free fallback — Chichewa via bible-api.com (CLB)
+  if (useChichewa) {
+    try {
+      final chichewaUrl = 'https://bible-api.com/${Uri.encodeComponent(ref)}?translation=clb';
+      final res = await http.get(Uri.parse(chichewaUrl)).timeout(const Duration(seconds: 10));
+      if (res.statusCode == 200) {
+        final decoded = jsonDecode(res.body) as Map<String, dynamic>;
+        final reference = (decoded['reference'] ?? '').toString().trim();
+        final text = (decoded['text'] ?? '').toString().trim();
+        if (reference.isNotEmpty && text.isNotEmpty) {
+          return TodaysVerse(
+            reference: reference,
+            text: text,
+            translation: '2026 ZAG ANNUAL BIBLE READING PLAN',
+          );
         }
       }
     } catch (_) {}
