@@ -34,6 +34,8 @@ dependencies:
   url_launcher: ^6.3.2
   http: ^1.2.2
   webview_flutter: ^4.10.0
+  flutter_local_notifications: ^17.2.0
+  timezone: ^0.9.4
 
 
 dev_dependencies:
@@ -64,6 +66,7 @@ flutter:
     - adds/logo.png
     - adds/chitsitsimutso.db
     - adds/verses.json
+    - adds/chichewa_verses.json
 
   # An image asset can refer to one or more resolution-specific "variants", see
   # https://docs.flutter.dev/development/ui/assets-and-images#resolution-aware

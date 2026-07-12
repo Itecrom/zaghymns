@@ -10,6 +10,9 @@ import 'package:sqflite/sqflite.dart';
 import 'package:http/http.dart' as http;
 import 'package:url_launcher/url_launcher.dart';
 import 'package:webview_flutter/webview_flutter.dart';
+import 'package:flutter_local_notifications/flutter_local_notifications.dart';
+import 'package:timezone/timezone.dart' as tz;
+import 'package:timezone/data/latest.dart' as tz_data;
 
 
 const appName = 'ZAG Nyimbo za Chitsitsimutso';
@@ -67,11 +70,83 @@ const _nightMuted = Color(0xFFB0BCDA);
 const _nightLine = Color(0x33FFFFFF);
 
 final appTheme = AppThemeController();
+final FlutterLocalNotificationsPlugin _notificationsPlugin = FlutterLocalNotificationsPlugin();
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await Future.wait([appTheme.load(), _loadFontSize(), _loadReadingLang()]);
+  await _initNotifications();
   runApp(const ZombaHymnsApp());
+}
+
+Future<void> _initNotifications() async {
+  const androidSettings = AndroidInitializationSettings('@mipmap/ic_launcher');
+  const iosSettings = DarwinInitializationSettings(
+    requestAlertPermission: true,
+    requestBadgePermission: true,
+    requestSoundPermission: true,
+  );
+  const initSettings = InitializationSettings(android: androidSettings, iOS: iosSettings);
+  await _notificationsPlugin.initialize(initSettings);
+
+  // Create notification channel for Android
+  const androidChannel = AndroidNotificationChannel(
+    'bible_reading_reminders',
+    'Bible Reading Reminders',
+    description: 'Daily reminders to read the ZAG Bible reading plan',
+    importance: Importance.high,
+  );
+  await _notificationsPlugin
+      .resolvePlatformSpecificImplementation<AndroidFlutterLocalNotificationsPlugin>()
+      ?.createNotificationChannel(androidChannel);
+
+  // Request permissions (Android 13+)
+  await _notificationsPlugin
+      .resolvePlatformSpecificImplementation<AndroidFlutterLocalNotificationsPlugin>()
+      ?.requestNotificationsPermission();
+
+  // Schedule daily reminders
+  await _scheduleDailyReminders();
+}
+
+Future<void> _scheduleDailyReminders() async {
+  tz_data.initializeTimeZones();
+  final now = tz.TZDateTime.now(tz.local);
+  final todaysVerse = await fetchTodaysVerse();
+  final verseText = todaysVerse?.text ?? 'Read your daily Bible verse';
+  final shortText = verseText.length > 100 ? '${verseText.substring(0, 100)}...' : verseText;
+
+  const androidDetails = AndroidNotificationDetails(
+    'bible_reading_reminders',
+    'Bible Reading Reminders',
+    channelDescription: 'Daily reminders to read the ZAG Bible reading plan',
+    importance: Importance.high,
+    priority: Priority.high,
+    styleInformation: BigTextStyleInformation(''),
+  );
+  const iosDetails = DarwinNotificationDetails();
+  const notificationDetails = NotificationDetails(android: androidDetails, iOS: iosDetails);
+
+  // Schedule 3 reminders per day
+  final times = [
+    tz.TZDateTime(tz.local, now.year, now.month, now.day, 8, 0),   // 8:00 AM
+    tz.TZDateTime(tz.local, now.year, now.month, now.day, 14, 0),  // 2:00 PM
+    tz.TZDateTime(tz.local, now.year, now.month, now.day, 20, 0),  // 8:00 PM
+  ];
+
+  for (var i = 0; i < times.length; i++) {
+    final scheduledTime = times[i];
+    await _notificationsPlugin.zonedSchedule(
+      i,
+      'ZOMBA ASSEMBLIES BIBLE READING REMINDER',
+      shortText,
+      scheduledTime,
+      notificationDetails,
+      androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
+      uiLocalNotificationDateInterpretation: UILocalNotificationDateInterpretation.absoluteTime,
+      matchDateTimeComponents: DateTimeComponents.time,
+    );
+  }
 }
 
 class ZombaHymnsApp extends StatelessWidget {
@@ -2995,8 +3070,8 @@ class TodaysVerse {
 // ── ZAG 2026 Annual Bible Reading Calendar (Aug–Dec from PDFs) ──────────
 //
 // Chichewa Bible via API.Bible (free key — register at https://scripture.api.bible)
-// Bible ID for Baibulo Lopatulika 2016: 'c315fa9f71d4af3a-01'
-// Replace _apiBibleKey with your own key from the API.Bible dashboard.
+// Bible ID for The Word of God in Contemporary Chichewa (CCL): '3fa4c85c95be3aa6-01'
+// Get your free API key from https://scripture.api.bible/
 const _apiBibleKey = 'xuX_F26_QCgMk0-fNr6KY';
 const _chichewaBibleId = '3fa4c85c95be3aa6-01';
 
@@ -3060,22 +3135,18 @@ Future<TodaysVerse?> fetchTodaysVerse() async {
     } catch (_) {}
   }
 
-  // 2b. Free fallback — Chichewa via bible-api.com (CLB)
+  // 2b. Local fallback — Chichewa verses from adds/chichewa_verses.json
   if (useChichewa) {
     try {
-      final chichewaUrl = 'https://bible-api.com/${Uri.encodeComponent(ref)}?translation=clb';
-      final res = await http.get(Uri.parse(chichewaUrl)).timeout(const Duration(seconds: 10));
-      if (res.statusCode == 200) {
-        final decoded = jsonDecode(res.body) as Map<String, dynamic>;
-        final reference = (decoded['reference'] ?? '').toString().trim();
-        final text = (decoded['text'] ?? '').toString().trim();
-        if (reference.isNotEmpty && text.isNotEmpty) {
-          return TodaysVerse(
-            reference: reference,
-            text: text,
-            translation: '2026 ZAG ANNUAL BIBLE READING PLAN',
-          );
-        }
+      final raw = await rootBundle.loadString('adds/chichewa_verses.json');
+      final chichewaMap = jsonDecode(raw) as Map<String, dynamic>;
+      final chichewaText = chichewaMap[ref]?.toString().trim();
+      if (chichewaText != null && chichewaText.isNotEmpty) {
+        return TodaysVerse(
+          reference: ref,
+          text: chichewaText,
+          translation: '2026 ZAG ANNUAL BIBLE READING PLAN',
+        );
       }
     } catch (_) {}
   }
