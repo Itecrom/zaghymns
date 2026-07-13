@@ -13,8 +13,10 @@ import 'package:webview_flutter/webview_flutter.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:timezone/timezone.dart' as tz;
 import 'package:timezone/data/latest.dart' as tz_data;
+import 'package:flutter_timezone/flutter_timezone.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_analytics/firebase_analytics.dart';
+import 'package:firebase_messaging/firebase_messaging.dart';
 
 
 const appName = 'ZAG Nyimbo za Chitsitsimutso';
@@ -29,6 +31,11 @@ const _fontSizeKey = 'global_font_size';
 
 // Global font-size scale (0.85 – 1.30), notifies listeners
 final fontSizeNotifier = ValueNotifier<double>(1.0);
+
+// Last retrieved FCM registration token (surfaced in the About screen so it
+// can be copied without relying on the debug console, which is stripped from
+// release builds).
+String? _fcmToken;
 
 Future<void> _loadFontSize() async {
   final prefs = await SharedPreferences.getInstance();
@@ -74,11 +81,20 @@ const _nightLine = Color(0x33FFFFFF);
 final appTheme = AppThemeController();
 final FlutterLocalNotificationsPlugin _notificationsPlugin = FlutterLocalNotificationsPlugin();
 
+@pragma('vm:entry-point')
+Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
+  await Firebase.initializeApp();
+  // When the app is terminated/killed, a new isolate is spawned for this
+  // handler, so Firebase must be initialized again. The system displays the
+  // notification automatically if the message has a notification payload.
+}
+
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await Future.wait([appTheme.load(), _loadFontSize(), _loadReadingLang()]);
   await _initNotifications();
   await Firebase.initializeApp();
+  await _initFcm();
   await _logAppOpen();
   runApp(const ZombaHymnsApp());
 }
@@ -99,11 +115,94 @@ Future<void> _logAppOpen() async {
   }
 }
 
+Future<void> _initFcm() async {
+  try {
+    // Handle messages received while the app is in the background/killed.
+    FirebaseMessaging.onBackgroundMessage(_firebaseMessagingBackgroundHandler);
+
+  // Request notification permission (required on iOS and Android 13+).
+  final settings = await FirebaseMessaging.instance.requestPermission(
+    alert: true,
+    badge: true,
+    sound: true,
+  );
+  debugPrint('FCM authorization status: ${settings.authorizationStatus}');
+
+  // Foreground messages are not shown automatically on Android — display them
+  // via the local notifications plugin using our existing channel.
+  FirebaseMessaging.onMessage.listen((RemoteMessage message) {
+    final notification = message.notification;
+    if (notification != null) {
+      _notificationsPlugin.show(
+        DateTime.now().millisecondsSinceEpoch % 100000,
+        notification.title,
+        notification.body,
+        const NotificationDetails(
+          android: AndroidNotificationDetails(
+            'bible_reading_reminders',
+            'Bible Reading Reminders',
+            channelDescription: 'Daily reminders to read the ZAG Bible reading plan',
+            importance: Importance.high,
+            priority: Priority.high,
+          ),
+          iOS: DarwinNotificationDetails(),
+        ),
+      );
+    }
+  });
+
+  // Tapped a notification that opened the app from the background.
+  FirebaseMessaging.onMessageOpenedApp.listen((RemoteMessage message) {
+    debugPrint('FCM onMessageOpenedApp: ${message.messageId}');
+  });
+
+  // Retrieve the device token. Send this to your backend (or use it with a
+  // Firebase Console "test message") to target this device with push.
+  try {
+    final token = await FirebaseMessaging.instance.getToken();
+    _fcmToken = token;
+    debugPrint('FCM token: $token');
+    // TODO: send this token to your backend so you can target this device.
+  } catch (e) {
+    debugPrint('Failed to get FCM token: $e');
+  }
+
+  // Subscribe to a topic so you can broadcast to all users at once from the
+  // Firebase Console (target the "all_users" topic) or a backend.
+  try {
+    await FirebaseMessaging.instance.subscribeToTopic('all_users');
+    debugPrint('Subscribed to topic: all_users');
+  } catch (e) {
+    debugPrint('Failed to subscribe to topic: $e');
+  }
+
+  // Keep the token current if it rotates.
+  FirebaseMessaging.instance.onTokenRefresh.listen((token) {
+    _fcmToken = token;
+    debugPrint('FCM token refreshed: $token');
+    // TODO: send the updated token to your backend.
+  });
+  } catch (e) {
+    debugPrint('FCM init error: $e');
+  }
+}
+
 Future<void> scheduleReminders() async {
   await _scheduleDailyReminders();
 }
 
 Future<void> _initNotifications() async {
+  // Load the timezone database and set the device's local timezone.
+  // The timezone package defaults tz.local to UTC, which would schedule
+  // reminders in UTC instead of the user's local time.
+  tz_data.initializeTimeZones();
+  try {
+    final String timeZoneName = await FlutterTimezone.getLocalTimezone();
+    tz.setLocalLocation(tz.getLocation(timeZoneName));
+  } catch (_) {
+    // Fall back to UTC if detection fails; scheduling still works, just in UTC.
+  }
+
   const androidSettings = AndroidInitializationSettings('@mipmap/ic_launcher');
   const iosSettings = DarwinInitializationSettings(
     requestAlertPermission: true,
@@ -137,7 +236,8 @@ Future<void> _scheduleDailyReminders() async {
   final verseText = todaysVerse?.text ?? 'Read your daily Bible verse';
   final shortText = verseText.length > 100 ? '${verseText.substring(0, 100)}...' : verseText;
 
-  const androidDetails = AndroidNotificationDetails(
+  try {
+    const androidDetails = AndroidNotificationDetails(
     'bible_reading_reminders',
     'Bible Reading Reminders',
     channelDescription: 'Daily reminders to read the ZAG Bible reading plan',
@@ -156,11 +256,17 @@ Future<void> _scheduleDailyReminders() async {
   ];
 
   for (var i = 0; i < dailyTimes.length; i++) {
+    // Roll forward to the next day if the time has already passed today,
+    // otherwise zonedSchedule may error on a past date and abort all scheduling.
+    var scheduled = dailyTimes[i];
+    if (scheduled.isBefore(now)) {
+      scheduled = scheduled.add(const Duration(days: 1));
+    }
     await _notificationsPlugin.zonedSchedule(
       i,
       'ZOMBA ASSEMBLIES BIBLE READING REMINDER',
       shortText,
-      dailyTimes[i],
+      scheduled,
       notificationDetails,
       androidScheduleMode: AndroidScheduleMode.inexactAllowWhileIdle,
       uiLocalNotificationDateInterpretation: UILocalNotificationDateInterpretation.absoluteTime,
@@ -169,7 +275,10 @@ Future<void> _scheduleDailyReminders() async {
   }
 
   // Daily Morning Devotion (4:00 AM - 5:00 AM)
-  final devotionTime = tz.TZDateTime(tz.local, now.year, now.month, now.day, 4, 0);
+  var devotionTime = tz.TZDateTime(tz.local, now.year, now.month, now.day, 4, 0);
+  if (devotionTime.isBefore(now)) {
+    devotionTime = devotionTime.add(const Duration(days: 1));
+  }
   await _notificationsPlugin.zonedSchedule(
     100,
     'DAILY MORNING DEVOTION',
@@ -243,8 +352,11 @@ Future<void> _scheduleDailyReminders() async {
     notificationDetails,
     androidScheduleMode: AndroidScheduleMode.inexactAllowWhileIdle,
     uiLocalNotificationDateInterpretation: UILocalNotificationDateInterpretation.absoluteTime,
-    matchDateTimeComponents: DateTimeComponents.dayOfWeekAndTime,
-  );
+      matchDateTimeComponents: DateTimeComponents.dayOfWeekAndTime,
+    );
+  } catch (e) {
+    debugPrint('Failed to schedule reminders: $e');
+  }
 }
 
 tz.TZDateTime _nextWeekday(int weekday, int hour, int minute) {
@@ -3715,6 +3827,7 @@ class AppInfoDialog extends StatelessWidget {
                         ),
                         _InfoCell(icon: Icons.groups_rounded, label: 'Team', value: 'ZAG Media Team'),
                       ]),
+                      const _FcmTokenTile(),
                     ],
                   ),
                 ),
@@ -3722,6 +3835,102 @@ class AppInfoDialog extends StatelessWidget {
             ),
           ),
         ),
+      ),
+    );
+  }
+}
+
+class _FcmTokenTile extends StatefulWidget {
+  const _FcmTokenTile();
+
+  @override
+  State<_FcmTokenTile> createState() => _FcmTokenTileState();
+}
+
+class _FcmTokenTileState extends State<_FcmTokenTile> {
+  String? _token;
+  bool _loading = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  Future<void> _load() async {
+    String? token = _fcmToken;
+    if (token == null) {
+      try {
+        token = await FirebaseMessaging.instance.getToken();
+        _fcmToken = token;
+      } catch (e) {
+        token = 'Error: $e';
+      }
+    }
+    if (mounted) {
+      setState(() {
+        _token = token;
+        _loading = false;
+      });
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final dark = _isDark(context);
+    final hasToken = _token != null &&
+        !_loading &&
+        !_token!.startsWith('Error') &&
+        _token!.isNotEmpty;
+    return Container(
+      margin: const EdgeInsets.only(top: 18),
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: dark ? _nightSurface : _mist,
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: _lineColor(context)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(Icons.notifications_active_rounded, color: _green, size: 15),
+              const SizedBox(width: 7),
+              Text(
+                'FCM TOKEN (for push testing)',
+                style: TextStyle(
+                  color: dark ? _gold : _navy,
+                  fontWeight: FontWeight.w900,
+                  fontSize: 12,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          SelectableText(
+            _loading ? 'Loading…' : (_token ?? 'Unavailable'),
+            style: TextStyle(
+              color: _textColor(context),
+              fontSize: 11,
+              fontFamily: 'monospace',
+            ),
+          ),
+          if (hasToken)
+            Align(
+              alignment: Alignment.centerRight,
+              child: TextButton.icon(
+                onPressed: () {
+                  Clipboard.setData(ClipboardData(text: _token!));
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text('FCM token copied')),
+                  );
+                },
+                icon: const Icon(Icons.copy_rounded, size: 16),
+                label: const Text('Copy'),
+              ),
+            ),
+        ],
       ),
     );
   }
