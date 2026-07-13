@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "928634012379",
+    "project_id": "zaghymns",
+    "storage_bucket": "zaghymns.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:928634012379:android:8720fa28d73249c58402fe",
+        "android_client_info": {
+          "package_name": "com.zagmedia.zaghymn"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBPiYxlyvxC5Dix3_VUuphMXKuAInNbBoo"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

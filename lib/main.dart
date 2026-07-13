@@ -13,12 +13,14 @@ import 'package:webview_flutter/webview_flutter.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:timezone/timezone.dart' as tz;
 import 'package:timezone/data/latest.dart' as tz_data;
+import 'package:firebase_core/firebase_core.dart';
+import 'package:firebase_analytics/firebase_analytics.dart';
 
 
 const appName = 'ZAG Nyimbo za Chitsitsimutso';
 const brandTitle = 'Zomba Assemblies Hymns';
 const appTagline = 'Nyimbo za Chitsitsimutso';
-const appVersion = '1.7';
+const appVersion = '1.8';
 const logoAsset = 'adds/logo.png';
 const databaseAsset = 'adds/chitsitsimutso.db';
 const _themeModeKey = 'night_mode_enabled';
@@ -76,7 +78,25 @@ Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await Future.wait([appTheme.load(), _loadFontSize(), _loadReadingLang()]);
   await _initNotifications();
+  await Firebase.initializeApp();
+  await _logAppOpen();
   runApp(const ZombaHymnsApp());
+}
+
+Future<void> _logAppOpen() async {
+  // Log a real app-open event to Firebase Analytics.
+  // (No local "active users" counter — that was misleading per-device state.)
+  try {
+    final analytics = FirebaseAnalytics.instance;
+    await analytics.logEvent(
+      name: 'app_open',
+      parameters: {
+        'app_version': appVersion,
+      },
+    );
+  } catch (e) {
+    // Firebase not configured or error - silently ignore
+  }
 }
 
 Future<void> scheduleReminders() async {
@@ -840,8 +860,8 @@ class _SplashScreenState extends State<SplashScreen>
         Navigator.of(context).pushReplacement(
           PageRouteBuilder<void>(
             transitionDuration: const Duration(milliseconds: 600),
-            pageBuilder: (_, __, ___) => const HomeScreen(),
-            transitionsBuilder: (_, anim, __, child) =>
+            pageBuilder: (_, _, _) => const HomeScreen(),
+            transitionsBuilder: (_, anim, _, child) =>
                 FadeTransition(opacity: anim, child: child),
           ),
         );
@@ -1427,7 +1447,6 @@ class AppSettingsDrawer extends StatelessWidget {
   Widget build(BuildContext context) {
     final dark = _isDark(context);
     final bg = dark ? _nightSurface : _paper;
-    final textColor = _textColor(context);
     final muted = _mutedColor(context);
 
     return Drawer(
@@ -1568,7 +1587,6 @@ class _DrawerTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final dark = _isDark(context);
     final textColor = _textColor(context);
 
     return InkWell(
@@ -2175,232 +2193,6 @@ class _MembershipCampaignBanner extends StatelessWidget {
               size: 20,
             ),
           ],
-        ),
-      ),
-    );
-  }
-}
-
-// ── Featured collection card (large hero style) ────────────────────────
-class _FeaturedCollectionCard extends StatelessWidget {
-  const _FeaturedCollectionCard({
-    required this.collection,
-    required this.count,
-    required this.onOpen,
-  });
-
-  final HymnCollection collection;
-  final int? count;
-  final VoidCallback onOpen;
-
-  @override
-  Widget build(BuildContext context) {
-    final countText = count == null
-        ? (collection.isComingSoon ? 'Coming Soon' : '...')
-        : collection == HymnCollection.favourites
-        ? '$count saved'
-        : '$count songs';
-    return Material(
-      color: Colors.transparent,
-      borderRadius: BorderRadius.circular(14),
-      clipBehavior: Clip.antiAlias,
-      child: InkWell(
-        onTap: onOpen,
-        child: Container(
-          decoration: BoxDecoration(
-            gradient: LinearGradient(
-              colors: collection.isComingSoon
-                  ? [collection.color.withValues(alpha: 0.55), collection.color.withValues(alpha: 0.35)]
-                  : [
-                      collection.color,
-                      Color.lerp(collection.color, const Color(0xFF0A1A4A), 0.35)!,
-                    ],
-              begin: Alignment.topLeft,
-              end: Alignment.bottomRight,
-            ),
-            borderRadius: BorderRadius.circular(14),
-            boxShadow: [
-              BoxShadow(
-                color: collection.color.withValues(alpha: 0.28),
-                blurRadius: 20,
-                offset: const Offset(0, 8),
-              ),
-            ],
-          ),
-          child: Stack(
-            children: [
-              const Positioned.fill(child: SanctuaryArt()),
-              Positioned(
-                top: 0, bottom: 0, left: 0,
-                child: Container(width: 5, color: _gold),
-              ),
-              Padding(
-                padding: const EdgeInsets.all(20),
-                child: Row(
-                  children: [
-                    Container(
-                      width: 64,
-                      height: 64,
-                      decoration: BoxDecoration(
-                        color: Colors.white.withValues(alpha: 0.15),
-                        borderRadius: BorderRadius.circular(14),
-                        border: Border.all(color: Colors.white.withValues(alpha: 0.20)),
-                      ),
-                      child: Icon(collection.icon, color: _gold, size: 34),
-                    ),
-                    const SizedBox(width: 16),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            collection.label,
-                            style: const TextStyle(
-                              color: Colors.white,
-                              fontWeight: FontWeight.w900,
-                              fontSize: 22,
-                              height: 1.1,
-                            ),
-                          ),
-                          const SizedBox(height: 4),
-                          Text(
-                            collection.subtitle,
-                            style: const TextStyle(
-                              color: Color(0xFFEDE7B4),
-                              fontWeight: FontWeight.w700,
-                              fontSize: 13,
-                            ),
-                          ),
-                          const SizedBox(height: 10),
-                          Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                            decoration: BoxDecoration(
-                              color: Colors.white.withValues(alpha: 0.15),
-                              borderRadius: BorderRadius.circular(20),
-                            ),
-                            child: Text(
-                              countText,
-                              style: const TextStyle(
-                                color: _gold,
-                                fontWeight: FontWeight.w900,
-                                fontSize: 12,
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                    Container(
-                      width: 40,
-                      height: 40,
-                      decoration: BoxDecoration(
-                        color: Colors.white.withValues(alpha: 0.15),
-                        borderRadius: BorderRadius.circular(10),
-                      ),
-                      child: const Icon(Icons.arrow_forward_rounded, color: Colors.white),
-                    ),
-                  ],
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-// ── Compact collection card (half-width) ──────────────────────────────
-class _CompactCollectionCard extends StatelessWidget {
-  const _CompactCollectionCard({
-    required this.collection,
-    required this.count,
-    required this.onOpen,
-  });
-
-  final HymnCollection collection;
-  final int? count;
-  final VoidCallback onOpen;
-
-  @override
-  Widget build(BuildContext context) {
-    final countText = count == null
-        ? (collection.isComingSoon ? 'Coming Soon' : '...')
-        : collection == HymnCollection.favourites
-        ? '$count saved'
-        : '$count songs';
-
-    return Material(
-      color: _surfaceColor(context, alpha: 0.96),
-      borderRadius: BorderRadius.circular(14),
-      clipBehavior: Clip.antiAlias,
-      child: InkWell(
-        onTap: onOpen,
-        child: Container(
-          decoration: BoxDecoration(
-            border: Border.all(color: _lineColor(context)),
-            borderRadius: BorderRadius.circular(14),
-            boxShadow: [
-              BoxShadow(
-                color: _ink.withValues(alpha: _isDark(context) ? 0.18 : 0.04),
-                blurRadius: 12,
-                offset: const Offset(0, 6),
-              ),
-            ],
-          ),
-          child: IntrinsicHeight(
-            child: Row(
-              children: [
-                Container(
-                  width: 5,
-                  decoration: BoxDecoration(
-                    color: collection.color,
-                    borderRadius: const BorderRadius.only(
-                      topLeft: Radius.circular(14),
-                      bottomLeft: Radius.circular(14),
-                    ),
-                  ),
-                ),
-                Expanded(
-                  child: Padding(
-                    padding: const EdgeInsets.all(14),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Container(
-                          width: 42,
-                          height: 42,
-                          decoration: BoxDecoration(
-                            color: collection.color.withValues(alpha: 0.12),
-                            borderRadius: BorderRadius.circular(10),
-                          ),
-                          child: Icon(collection.icon, color: collection.color, size: 22),
-                        ),
-                        const SizedBox(height: 10),
-                        Text(
-                          collection.label,
-                          style: TextStyle(
-                            color: _textColor(context),
-                            fontWeight: FontWeight.w900,
-                            fontSize: 15,
-                          ),
-                        ),
-                        const SizedBox(height: 2),
-                        Text(
-                          countText,
-                          style: TextStyle(
-                            color: collection.color,
-                            fontWeight: FontWeight.w800,
-                            fontSize: 12,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ),
         ),
       ),
     );
@@ -3305,7 +3097,7 @@ String? _refToApiBibleId(String ref) {
   return '$bookCode.$chapter.$verseStart-$bookCode.$chapter.$verseEnd';
 }
 
-const _whatsNewKey = 'whats_new_seen_v1.7';
+const _whatsNewKey = 'whats_new_seen_v1.8';
 
 const _whatsNewItems = [
   (icon: Icons.settings_rounded,          text: 'New Settings sidebar — all controls in one place'),
@@ -3314,6 +3106,10 @@ const _whatsNewItems = [
   (icon: Icons.dark_mode_rounded,         text: 'Dark/light mode toggle moved to Settings sidebar'),
   (icon: Icons.share_rounded,             text: 'Share the app directly from Settings'),
   (icon: Icons.system_update_rounded,     text: 'Update banner — notified when a new version is out'),
+  (icon: Icons.how_to_reg_rounded,        text: 'Membership registration — join ZAG directly in the app'),
+  (icon: Icons.notifications_rounded,     text: 'Daily Bible reading reminders — 3 times a day'),
+  (icon: Icons.church_rounded,            text: 'Church event reminders — Sunday services, Midweek, Homecell'),
+  (icon: Icons.phone_rounded,             text: 'Contact Lead Developer via WhatsApp directly from About'),
 ];
 
 Future<void> _maybeShowWhatsNew(BuildContext context) async {
@@ -3512,42 +3308,6 @@ bool _isNewerVersion(String latest, String current) {
     if (lv < cv) return false;
   }
   return false;
-}
-
-void _showUpdateDialog(BuildContext context, String latestVersion) {
-  showDialog<void>(
-    context: context,
-    builder: (_) => AlertDialog(
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-      backgroundColor: _isDark(context) ? _nightSurface : _paper,
-      title: Row(
-        children: [
-          Icon(Icons.system_update_rounded, color: _gold, size: 22),
-          const SizedBox(width: 10),
-          const Text('Update Available', style: TextStyle(fontWeight: FontWeight.w900)),
-        ],
-      ),
-      content: Text(
-        'Version $latestVersion is available on APKPure.\nYou are on v$appVersion.',
-        style: TextStyle(color: _mutedColor(context), height: 1.5),
-      ),
-      actions: [
-        TextButton(
-          onPressed: () => Navigator.of(context).pop(),
-          child: const Text('Later'),
-        ),
-        FilledButton.icon(
-          onPressed: () {
-            Navigator.of(context).pop();
-            // url_launcher would open the APKPure page
-            // launchUrl(Uri.parse(_apkPureUrl));
-          },
-          icon: const Icon(Icons.download_rounded, size: 18),
-          label: const Text('Get Update'),
-        ),
-      ],
-    ),
-  );
 }
 
 class HymnLyricsView extends StatefulWidget {

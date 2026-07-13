@@ -10,7 +10,7 @@ publish_to: 'none' # Remove this line if you wish to publish your app to the app
 # When the version number is updated, run `flutter pub upgrade --major-versions`.
 # Alternatively, update the version number manually by changing the lines below.
 # Read more about versioning at https://docs.flutter.dev/deployment/android#versioning
-version: 1.6.0+3
+version: 1.8.0+4
 
 environment:
   sdk: ^3.12.2
@@ -36,6 +36,8 @@ dependencies:
   webview_flutter: ^4.10.0
   flutter_local_notifications: ^17.2.0
   timezone: ^0.9.4
+  firebase_core: ^3.6.0
+  firebase_analytics: ^11.4.0
 
 
 dev_dependencies:
@@ -78,4 +80,9 @@ flutter_launcher_icons:
   android: true
   ios: true
   image_path: "adds/logo.png"
+  # Use the full logo as the adaptive background layer and a transparent
+  # foreground so the entire logo is shown (not cropped into a safe-zone
+  # on a solid background color).
+  adaptive_icon_background: "adds/logo.png"
+  adaptive_icon_foreground: "adds/transparent.png"
   min_sdk_android: 21
