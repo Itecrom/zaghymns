@@ -10,7 +10,7 @@ publish_to: 'none' # Remove this line if you wish to publish your app to the app
 # When the version number is updated, run `flutter pub upgrade --major-versions`.
 # Alternatively, update the version number manually by changing the lines below.
 # Read more about versioning at https://docs.flutter.dev/deployment/android#versioning
-version: 1.8.0+4
+version: 1.8.9+9
 
 environment:
   sdk: ^3.12.2
@@ -40,6 +40,7 @@ dependencies:
   firebase_core: ^3.6.0
   firebase_analytics: ^11.4.0
   firebase_messaging: ^15.1.0
+  cloud_firestore: ^5.4.0
 
 
 dev_dependencies:

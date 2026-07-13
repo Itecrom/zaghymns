@@ -1,14 +1,14 @@
-# ZAG Nyimbo za Chitsitsimutso
+# Zomba Assemblies of God App
 
-**Zomba Assemblies of God Hymns App**
+**Connecting every member, everyday**
 
-A Flutter mobile application designed to serve the Zomba Assemblies of God congregation with digital access to hymns, daily Bible reading plans, and church membership registration.
+A Flutter mobile application designed to serve the Zomba Assemblies of God congregation with digital access to hymns, daily Bible reading plans, church announcements, and membership registration.
 
 ---
 
 ## 📱 About the App
 
-**ZAG Nyimbo za Chitsitsimutso** (Zomba Assemblies of God Hymns) is a cross-platform mobile app built with Flutter. It provides the ZAG congregation with:
+**Zomba Assemblies of God App** is a cross-platform mobile app built with Flutter. It provides the ZAG congregation with:
 
 - 📖 **Digital Hymn Book** — Access to Chichewa, Chitumbuka, and English hymns
 - 📅 **Daily Bible Reading** — 2026 ZAG Annual Bible Reading Plan with Chichewa and English translations
@@ -18,16 +18,19 @@ A Flutter mobile application designed to serve the Zomba Assemblies of God congr
 - 🌐 **Bible Reading Language** — Switch between Chichewa and English for daily verses
 - 📝 **Membership Registration** — Register as a ZAG member directly within the app via an embedded WebView
 - 💬 **Contact Lead Developer** — Quick WhatsApp access to the app's lead developer
+- 📢 **Announcements** — Stay updated with the latest church news and events
+- 🎵 **Nyimbo za Mbukhu** — All hymn collections in one convenient, expandable card
 
 ---
 
 ## ✨ Features
 
 ### Hymn Collections
-- **Chichewa Hymns** — Full collection of Nyimbo za Chitsitsimutso
-- **Chitumbuka Hymns** — Complete Sumu za Chitumbuka collection
-- **English Hymns** — Coming soon
-- **Favourites** — Personalised list of saved hymns
+- **Nyimbo za Mbukhu** — All hymn collections in one expandable card
+  - **Chichewa Hymns** — Full collection of Nyimbo za Chitsitsimutso
+  - **Chitumbuka Hymns** — Complete Sumu za Chitumbuka collection
+  - **English Hymns** — Coming soon
+  - **Favourites** — Personalised list of saved hymns
 
 ### Daily Bible Reading
 - Follow the **2026 ZAG Annual Bible Reading Plan**
@@ -36,12 +39,18 @@ A Flutter mobile application designed to serve the Zomba Assemblies of God congr
 - **English** translation via WEB (World English Bible)
 - Offline-capable calendar references stored in `adds/verses.json`
 
+### Announcements
+- **Firebase-powered announcements** — Real-time church news and updates
+- Announcements disappear when new ones are posted
+- Accessible from the home screen
+
 ### User Experience
 - **Dark / Light theme** toggle in the Settings sidebar
 - **Global font size** control (85%, 100%, 115%, 130%)
 - **Bible reading language** selector (Chichewa / English)
 - **Share the app** directly with friends and family
 - **Splash screen** with animated logo and rotating credits
+- **Update banner** — Notified when a new version is available
 
 ### Membership Registration
 - In-app **WebView** registration form at `https://zombaassemblies.ct.ws/`
@@ -64,6 +73,8 @@ A Flutter mobile application designed to serve the Zomba Assemblies of God congr
 | **Local Storage** | `SharedPreferences` (settings), `sqflite` (hymns DB) |
 | **Networking** | `http` (Bible API calls), `url_launcher` (WhatsApp, sharing) |
 | **Web Content** | `webview_flutter` (membership registration) |
+| **Push Notifications** | `firebase_messaging` + `flutter_local_notifications` |
+| **Cloud Database** | `cloud_firestore` (announcements) |
 | **Icons** | Material Icons + custom launcher icons from `adds/logo.png` |
 
 ---
@@ -83,6 +94,13 @@ dependencies:
   url_launcher: ^6.3.2
   http: ^1.2.2
   webview_flutter: ^4.10.0
+  flutter_local_notifications: ^17.2.0
+  timezone: ^0.9.4
+  flutter_timezone: ^4.1.0
+  firebase_core: ^3.6.0
+  firebase_analytics: ^11.4.0
+  firebase_messaging: ^15.1.0
+  cloud_firestore: ^5.4.0
 
 dev_dependencies:
   flutter_test:
@@ -209,9 +227,10 @@ Global font size is stored locally:
 | Screen | Purpose |
 |--------|---------|
 | `SplashScreen` | Animated logo + rotating credits on app launch |
-| `HomeScreen` | Main dashboard with daily reading, hymn collections, and campaign banner |
+| `HomeScreen` | Main dashboard with daily reading, Nyimbo za Mbukhu, announcements, and campaign banner |
 | `HymnListScreen` | Searchable list of hymns for a selected collection |
 | `HymnDetailScreen` | Full hymn view with lyrics, chords, and metadata |
+| `AnnouncementsScreen` | Firebase-powered church announcements and news |
 | `RegistrationWebViewScreen` | Embedded WebView for membership registration |
 | `AppInfoDialog` | About dialog with app details and developer contact |
 
@@ -235,7 +254,12 @@ HomeScreen
     │       ├── API.Bible (Chichewa, if key configured)
     │       ├── bible-api.com CLB (Chichewa fallback)
     │       └── bible-api.com WEB (English fallback)
-    ├── Hymn Collection Cards (Chichewa, Chitumbuka, English, Favourites)
+    ├── Nyimbo za Mbukhu Card (expandable)
+    │       ├── Chichewa Hymns → HymnListScreen
+    │       ├── Chitumbuka Hymns → HymnListScreen
+    │       ├── English Hymns → Coming Soon
+    │       └── Favourites → HymnListScreen
+    ├── Announcements Card → AnnouncementsScreen (Firebase Firestore)
     ├── Membership Campaign Banner → RegistrationWebViewScreen
     └── AppSettingsDrawer (sidebar)
             ├── Theme toggle
@@ -290,7 +314,7 @@ This project is proprietary software developed for Zomba Assemblies of God. All 
 - **Senior Pastor**: Rev Symon Msisya
 - **Lead Developer**: Leonard JJ Mhone
 - **Presented by**: ZAG Media Team
-- **Church**: Zomba Assemblies of God — Nyimbo za Chitsitsimutso
+- **Church**: Zomba Assemblies of God — Connecting every member, everyday
 
 ---
 

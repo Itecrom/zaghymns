@@ -17,12 +17,13 @@ import 'package:flutter_timezone/flutter_timezone.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_analytics/firebase_analytics.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 
 
-const appName = 'ZAG Nyimbo za Chitsitsimutso';
-const brandTitle = 'Zomba Assemblies Hymns';
-const appTagline = 'Nyimbo za Chitsitsimutso';
-const appVersion = '1.8';
+const appName = 'Zomba Assemblies App';
+const brandTitle = 'Zomba Assemblies of God';
+const appTagline = 'Connecting every member, everyday';
+const appVersion = '1.8.9';
 const logoAsset = 'adds/logo.png';
 const databaseAsset = 'adds/chitsitsimutso.db';
 const _themeModeKey = 'night_mode_enabled';
@@ -116,17 +117,20 @@ Future<void> _logAppOpen() async {
 }
 
 Future<void> _initFcm() async {
-  try {
-    // Handle messages received while the app is in the background/killed.
-    FirebaseMessaging.onBackgroundMessage(_firebaseMessagingBackgroundHandler);
+  // Handle messages received while the app is in the background/killed.
+  FirebaseMessaging.onBackgroundMessage(_firebaseMessagingBackgroundHandler);
 
   // Request notification permission (required on iOS and Android 13+).
-  final settings = await FirebaseMessaging.instance.requestPermission(
-    alert: true,
-    badge: true,
-    sound: true,
-  );
-  debugPrint('FCM authorization status: ${settings.authorizationStatus}');
+  try {
+    final settings = await FirebaseMessaging.instance.requestPermission(
+      alert: true,
+      badge: true,
+      sound: true,
+    );
+    debugPrint('FCM authorization status: ${settings.authorizationStatus}');
+  } catch (e) {
+    debugPrint('FCM permission request error: $e');
+  }
 
   // Foreground messages are not shown automatically on Android — display them
   // via the local notifications plugin using our existing channel.
@@ -157,7 +161,7 @@ Future<void> _initFcm() async {
   });
 
   // Retrieve the device token. Send this to your backend (or use it with a
-  // Firebase Console "test message") to target this device with push.
+  // Firebase Console "test message") to target this device.
   try {
     final token = await FirebaseMessaging.instance.getToken();
     _fcmToken = token;
@@ -182,9 +186,6 @@ Future<void> _initFcm() async {
     debugPrint('FCM token refreshed: $token');
     // TODO: send the updated token to your backend.
   });
-  } catch (e) {
-    debugPrint('FCM init error: $e');
-  }
 }
 
 Future<void> scheduleReminders() async {
@@ -236,8 +237,7 @@ Future<void> _scheduleDailyReminders() async {
   final verseText = todaysVerse?.text ?? 'Read your daily Bible verse';
   final shortText = verseText.length > 100 ? '${verseText.substring(0, 100)}...' : verseText;
 
-  try {
-    const androidDetails = AndroidNotificationDetails(
+  const androidDetails = AndroidNotificationDetails(
     'bible_reading_reminders',
     'Bible Reading Reminders',
     channelDescription: 'Daily reminders to read the ZAG Bible reading plan',
@@ -256,106 +256,131 @@ Future<void> _scheduleDailyReminders() async {
   ];
 
   for (var i = 0; i < dailyTimes.length; i++) {
-    // Roll forward to the next day if the time has already passed today,
-    // otherwise zonedSchedule may error on a past date and abort all scheduling.
-    var scheduled = dailyTimes[i];
-    if (scheduled.isBefore(now)) {
-      scheduled = scheduled.add(const Duration(days: 1));
+    try {
+      // Roll forward to the next day if the time has already passed today,
+      // otherwise zonedSchedule may error on a past date and abort all scheduling.
+      var scheduled = dailyTimes[i];
+      if (scheduled.isBefore(now)) {
+        scheduled = scheduled.add(const Duration(days: 1));
+      }
+      await _notificationsPlugin.zonedSchedule(
+        i,
+        'ZOMBA ASSEMBLIES BIBLE READING REMINDER',
+        shortText,
+        scheduled,
+        notificationDetails,
+        androidScheduleMode: AndroidScheduleMode.inexactAllowWhileIdle,
+        uiLocalNotificationDateInterpretation: UILocalNotificationDateInterpretation.absoluteTime,
+        matchDateTimeComponents: DateTimeComponents.time,
+      );
+    } catch (e) {
+      debugPrint('Failed to schedule daily reminder $i: $e');
+    }
+  }
+
+  // Daily Morning Devotion (4:00 AM - 5:00 AM)
+  try {
+    var devotionTime = tz.TZDateTime(tz.local, now.year, now.month, now.day, 4, 0);
+    if (devotionTime.isBefore(now)) {
+      devotionTime = devotionTime.add(const Duration(days: 1));
     }
     await _notificationsPlugin.zonedSchedule(
-      i,
-      'ZOMBA ASSEMBLIES BIBLE READING REMINDER',
-      shortText,
-      scheduled,
+      100,
+      'DAILY MORNING DEVOTION',
+      'Join us for Daily Morning Devotion from 4-5am. Meet at Church or Join Online via WhatsApp.',
+      devotionTime,
       notificationDetails,
       androidScheduleMode: AndroidScheduleMode.inexactAllowWhileIdle,
       uiLocalNotificationDateInterpretation: UILocalNotificationDateInterpretation.absoluteTime,
       matchDateTimeComponents: DateTimeComponents.time,
     );
+  } catch (e) {
+    debugPrint('Failed to schedule morning devotion: $e');
   }
-
-  // Daily Morning Devotion (4:00 AM - 5:00 AM)
-  var devotionTime = tz.TZDateTime(tz.local, now.year, now.month, now.day, 4, 0);
-  if (devotionTime.isBefore(now)) {
-    devotionTime = devotionTime.add(const Duration(days: 1));
-  }
-  await _notificationsPlugin.zonedSchedule(
-    100,
-    'DAILY MORNING DEVOTION',
-    'Join us for Daily Morning Devotion from 4-5am. Meet at Church or Join Online via WhatsApp.',
-    devotionTime,
-    notificationDetails,
-    androidScheduleMode: AndroidScheduleMode.inexactAllowWhileIdle,
-    uiLocalNotificationDateInterpretation: UILocalNotificationDateInterpretation.absoluteTime,
-    matchDateTimeComponents: DateTimeComponents.time,
-  );
 
   // Wednesday Midweek Players (5:00 PM)
-  final wednesday5pm = _nextWeekday(DateTime.wednesday, 17, 0);
-  await _notificationsPlugin.zonedSchedule(
-    200,
-    'MIDWEEK PLAYERS',
-    'Every Wednesday Midweek Players from 5pm-6PM. Everyone is encouraged to attend or Join via WhatsApp group.',
-    wednesday5pm,
-    notificationDetails,
-    androidScheduleMode: AndroidScheduleMode.inexactAllowWhileIdle,
-    uiLocalNotificationDateInterpretation: UILocalNotificationDateInterpretation.absoluteTime,
-    matchDateTimeComponents: DateTimeComponents.dayOfWeekAndTime,
-  );
-
-  // Sunday Morning Service (6:15 AM)
-  final sundayMorning = _nextWeekday(DateTime.sunday, 6, 15);
-  await _notificationsPlugin.zonedSchedule(
-    300,
-    'SUNDAY Morning Service',
-    'Sunday Morning Service from 06:15am - 08:15am. You can also attend via Facebook: https://web.facebook.com/zombaassemblies',
-    sundayMorning,
-    notificationDetails,
-    androidScheduleMode: AndroidScheduleMode.inexactAllowWhileIdle,
-    uiLocalNotificationDateInterpretation: UILocalNotificationDateInterpretation.absoluteTime,
-    matchDateTimeComponents: DateTimeComponents.dayOfWeekAndTime,
-  );
-
-  // Sunday Second Service (8:30 AM)
-  final sundaySecond = _nextWeekday(DateTime.sunday, 8, 30);
-  await _notificationsPlugin.zonedSchedule(
-    301,
-    'SUNDAY Second Service',
-    'Sunday Second Service from 08:30am - 11:00am. You can also attend via Facebook: https://web.facebook.com/zombaassemblies',
-    sundaySecond,
-    notificationDetails,
-    androidScheduleMode: AndroidScheduleMode.inexactAllowWhileIdle,
-    uiLocalNotificationDateInterpretation: UILocalNotificationDateInterpretation.absoluteTime,
-    matchDateTimeComponents: DateTimeComponents.dayOfWeekAndTime,
-  );
-
-  // Tuesday OMC Meeting (Women Ministry) - 9:00 AM
-  final tuesdayOMC = _nextWeekday(DateTime.tuesday, 9, 0);
-  await _notificationsPlugin.zonedSchedule(
-    400,
-    'TUESDAY OMC Meeting',
-    'Every Tuesday OMC meeting in the morning. This is a meeting of Women Ministry members.',
-    tuesdayOMC,
-    notificationDetails,
-    androidScheduleMode: AndroidScheduleMode.inexactAllowWhileIdle,
-    uiLocalNotificationDateInterpretation: UILocalNotificationDateInterpretation.absoluteTime,
-    matchDateTimeComponents: DateTimeComponents.dayOfWeekAndTime,
-  );
-
-  // Tuesday Homecell Players - 6:00 PM
-  final tuesdayHomecell = _nextWeekday(DateTime.tuesday, 18, 0);
-  await _notificationsPlugin.zonedSchedule(
-    401,
-    'HOMECELL PLAYERS',
-    'Every Tuesday Homecell Players. Gather at your Local Homecells.',
-    tuesdayHomecell,
-    notificationDetails,
-    androidScheduleMode: AndroidScheduleMode.inexactAllowWhileIdle,
-    uiLocalNotificationDateInterpretation: UILocalNotificationDateInterpretation.absoluteTime,
+  try {
+    final wednesday5pm = _nextWeekday(DateTime.wednesday, 17, 0);
+    await _notificationsPlugin.zonedSchedule(
+      200,
+      'MIDWEEK PLAYERS',
+      'Every Wednesday Midweek Players from 5pm-6PM. Everyone is encouraged to attend or Join via WhatsApp group.',
+      wednesday5pm,
+      notificationDetails,
+      androidScheduleMode: AndroidScheduleMode.inexactAllowWhileIdle,
+      uiLocalNotificationDateInterpretation: UILocalNotificationDateInterpretation.absoluteTime,
       matchDateTimeComponents: DateTimeComponents.dayOfWeekAndTime,
     );
   } catch (e) {
-    debugPrint('Failed to schedule reminders: $e');
+    debugPrint('Failed to schedule midweek players: $e');
+  }
+
+  // Sunday Morning Service (6:15 AM)
+  try {
+    final sundayMorning = _nextWeekday(DateTime.sunday, 6, 15);
+    await _notificationsPlugin.zonedSchedule(
+      300,
+      'SUNDAY Morning Service',
+      'Sunday Morning Service from 06:15am - 08:15am. You can also attend via Facebook: https://web.facebook.com/zombaassemblies',
+      sundayMorning,
+      notificationDetails,
+      androidScheduleMode: AndroidScheduleMode.inexactAllowWhileIdle,
+      uiLocalNotificationDateInterpretation: UILocalNotificationDateInterpretation.absoluteTime,
+      matchDateTimeComponents: DateTimeComponents.dayOfWeekAndTime,
+    );
+  } catch (e) {
+    debugPrint('Failed to schedule Sunday morning service: $e');
+  }
+
+  // Sunday Second Service (8:30 AM)
+  try {
+    final sundaySecond = _nextWeekday(DateTime.sunday, 8, 30);
+    await _notificationsPlugin.zonedSchedule(
+      301,
+      'SUNDAY Second Service',
+      'Sunday Second Service from 08:30am - 11:00am. You can also attend via Facebook: https://web.facebook.com/zombaassemblies',
+      sundaySecond,
+      notificationDetails,
+      androidScheduleMode: AndroidScheduleMode.inexactAllowWhileIdle,
+      uiLocalNotificationDateInterpretation: UILocalNotificationDateInterpretation.absoluteTime,
+      matchDateTimeComponents: DateTimeComponents.dayOfWeekAndTime,
+    );
+  } catch (e) {
+    debugPrint('Failed to schedule Sunday second service: $e');
+  }
+
+  // Tuesday OMC Meeting (Women Ministry) - 9:00 AM
+  try {
+    final tuesdayOMC = _nextWeekday(DateTime.tuesday, 9, 0);
+    await _notificationsPlugin.zonedSchedule(
+      400,
+      'TUESDAY OMC Meeting',
+      'Every Tuesday OMC meeting in the morning. This is a meeting of Women Ministry members.',
+      tuesdayOMC,
+      notificationDetails,
+      androidScheduleMode: AndroidScheduleMode.inexactAllowWhileIdle,
+      uiLocalNotificationDateInterpretation: UILocalNotificationDateInterpretation.absoluteTime,
+      matchDateTimeComponents: DateTimeComponents.dayOfWeekAndTime,
+    );
+  } catch (e) {
+    debugPrint('Failed to schedule Tuesday OMC meeting: $e');
+  }
+
+  // Tuesday Homecell Players - 6:00 PM
+  try {
+    final tuesdayHomecell = _nextWeekday(DateTime.tuesday, 18, 0);
+    await _notificationsPlugin.zonedSchedule(
+      401,
+      'HOMECELL PLAYERS',
+      'Every Tuesday Homecell Players. Gather at your Local Homecells.',
+      tuesdayHomecell,
+      notificationDetails,
+      androidScheduleMode: AndroidScheduleMode.inexactAllowWhileIdle,
+      uiLocalNotificationDateInterpretation: UILocalNotificationDateInterpretation.absoluteTime,
+      matchDateTimeComponents: DateTimeComponents.dayOfWeekAndTime,
+    );
+  } catch (e) {
+    debugPrint('Failed to schedule Tuesday homecell players: $e');
   }
 }
 
@@ -920,7 +945,7 @@ const _splashCredits = [
   _Credit(role: 'Senior Pastor', name: 'Rev Symon Msisya', icon: Icons.church_rounded),
   _Credit(role: 'Lead Developer', name: 'Leonard JJ Mhone', icon: Icons.code_rounded),
   _Credit(role: 'Presented by', name: 'ZAG Media Team', icon: Icons.groups_rounded),
-  _Credit(role: 'Zomba Assemblies of God', name: 'Nyimbo za Chitsitsimutso', icon: Icons.music_note_rounded),
+  _Credit(role: 'Zomba Assemblies of God', name: 'Connecting every member, everyday', icon: Icons.music_note_rounded),
 ];
 
 class _Credit {
@@ -1352,6 +1377,14 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
+  Future<void> _openAnnouncements() async {
+    await Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (_) => const AnnouncementsScreen(),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -1387,44 +1420,26 @@ class _HomeScreenState extends State<HomeScreen> {
                             children: [
                               _DailyReadingCard(verseFuture: _todayVerseFuture),
                               const SizedBox(height: 14),
-                              Row(
-                                children: [
-                                  Expanded(
-                                    child: _MiniCollectionCard(
-                                      collection: HymnCollection.chichewa,
-                                      count: counts[HymnCollection.chichewa],
-                                      onOpen: () => _openCollection(HymnCollection.chichewa),
-                                    ),
-                                  ),
-                                  const SizedBox(width: 10),
-                                  Expanded(
-                                    child: _MiniCollectionCard(
-                                      collection: HymnCollection.tumbuka,
-                                      count: counts[HymnCollection.tumbuka],
-                                      onOpen: () => _openCollection(HymnCollection.tumbuka),
-                                    ),
-                                  ),
-                                ],
+                              _NyimboZaMbukhuCard(
+                                counts: counts,
+                                onOpenCollection: (collection) {
+                                  if (collection.isComingSoon) {
+                                    ScaffoldMessenger.of(context).showSnackBar(
+                                      SnackBar(
+                                        content: const Text('English hymns coming soon!'),
+                                        backgroundColor: collection.color,
+                                        behavior: SnackBarBehavior.floating,
+                                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                                      ),
+                                    );
+                                    return;
+                                  }
+                                  _openCollection(collection);
+                                },
                               ),
                               const SizedBox(height: 10),
-                              Row(
-                                children: [
-                                  Expanded(
-                                    child: _MiniCollectionCard(
-                                      collection: HymnCollection.english,
-                                      count: counts[HymnCollection.english],
-                                      onOpen: () => _openCollection(HymnCollection.english),
-                                    ),
-                                  ),
-                                  const SizedBox(width: 10),
-                                  Expanded(
-                                    child: _MiniCollectionCard(
-                                      collection: HymnCollection.favourites,
-                                      count: counts[HymnCollection.favourites],
-                                      onOpen: () => _openCollection(HymnCollection.favourites),
-                                    ),
-                                  ),
-                                ],
+                              _AnnouncementsCard(
+                                onTap: _openAnnouncements,
                               ),
                               const SizedBox(height: 10),
                               _MembershipCampaignBanner(
@@ -2311,6 +2326,207 @@ class _MembershipCampaignBanner extends StatelessWidget {
   }
 }
 
+// ── Nyimbo za Mbukhu bundled card ──────────────────────────────────────────
+class _NyimboZaMbukhuCard extends StatefulWidget {
+  const _NyimboZaMbukhuCard({
+    required this.onOpenCollection,
+    required this.counts,
+  });
+
+  final void Function(HymnCollection) onOpenCollection;
+  final Map<HymnCollection, int> counts;
+
+  @override
+  State<_NyimboZaMbukhuCard> createState() => _NyimboZaMbukhuCardState();
+}
+
+class _NyimboZaMbukhuCardState extends State<_NyimboZaMbukhuCard> {
+  bool _expanded = false;
+
+  @override
+  Widget build(BuildContext context) {
+    // Two rows of two half-width cards, revealed when expanded:
+    //   Chichewa  | English
+    //   Chitumbuka | Favourites
+    final firstRow = [HymnCollection.chichewa, HymnCollection.english];
+    final secondRow = [HymnCollection.tumbuka, HymnCollection.favourites];
+
+    Widget row(List<HymnCollection> items) => IntrinsicHeight(
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              for (var i = 0; i < items.length; i++) ...[
+                if (i > 0) const SizedBox(width: 10),
+                Expanded(
+                  child: _MiniCollectionCard(
+                    collection: items[i],
+                    count: widget.counts[items[i]],
+                    onOpen: () {
+                      setState(() => _expanded = false);
+                      widget.onOpenCollection(items[i]);
+                    },
+                  ),
+                ),
+              ],
+            ],
+          ),
+        );
+
+    return Column(
+      children: [
+        Material(
+          color: _surfaceColor(context, alpha: 0.96),
+          borderRadius: BorderRadius.circular(12),
+          clipBehavior: Clip.antiAlias,
+          child: InkWell(
+            onTap: () => setState(() => _expanded = !_expanded),
+            child: Container(
+              decoration: BoxDecoration(
+                border: Border.all(color: _lineColor(context)),
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Padding(
+                padding: const EdgeInsets.all(16),
+                child: Row(
+                  children: [
+                    Container(
+                      width: 48,
+                      height: 48,
+                      decoration: BoxDecoration(
+                        color: _navy.withValues(alpha: 0.10),
+                        borderRadius: BorderRadius.circular(10),
+                        border: Border.all(color: _navy.withValues(alpha: 0.20)),
+                      ),
+                      child: Icon(Icons.library_music_rounded, color: _navy, size: 26),
+                    ),
+                    const SizedBox(width: 14),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'Nyimbo za Mbukhu',
+                            style: TextStyle(
+                              color: _textColor(context),
+                              fontWeight: FontWeight.w900,
+                              fontSize: 16,
+                              height: 1.2,
+                            ),
+                          ),
+                          const SizedBox(height: 4),
+                          Text(
+                            'Chichewa, Chitumbuka, English, Favourites',
+                            style: TextStyle(
+                              color: _mutedColor(context),
+                              fontSize: 12,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    Icon(
+                      _expanded
+                          ? Icons.expand_less_rounded
+                          : Icons.expand_more_rounded,
+                      color: _mutedColor(context),
+                      size: 24,
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ),
+        if (_expanded)
+          Padding(
+            padding: const EdgeInsets.only(top: 10),
+            child: Column(
+              children: [
+                row(firstRow),
+                const SizedBox(height: 10),
+                row(secondRow),
+              ],
+            ),
+          ),
+      ],
+    );
+  }
+}
+
+// ── Announcements Card ──────────────────────────────────────────────────────
+class _AnnouncementsCard extends StatelessWidget {
+  const _AnnouncementsCard({required this.onTap});
+
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: _surfaceColor(context, alpha: 0.96),
+      borderRadius: BorderRadius.circular(12),
+      clipBehavior: Clip.antiAlias,
+      child: InkWell(
+        onTap: onTap,
+        child: Container(
+          decoration: BoxDecoration(
+            border: Border.all(color: _lineColor(context)),
+            borderRadius: BorderRadius.circular(12),
+          ),
+          child: Padding(
+            padding: const EdgeInsets.all(16),
+            child: Row(
+              children: [
+                Container(
+                  width: 48,
+                  height: 48,
+                  decoration: BoxDecoration(
+                    color: _green.withValues(alpha: 0.10),
+                    borderRadius: BorderRadius.circular(10),
+                    border: Border.all(color: _green.withValues(alpha: 0.20)),
+                  ),
+                  child: Icon(Icons.campaign_rounded, color: _green, size: 26),
+                ),
+                const SizedBox(width: 14),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'Announcements',
+                        style: TextStyle(
+                          color: _textColor(context),
+                          fontWeight: FontWeight.w900,
+                          fontSize: 16,
+                          height: 1.2,
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        'Stay updated with church news and events',
+                        style: TextStyle(
+                          color: _mutedColor(context),
+                          fontSize: 12,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                Icon(
+                  Icons.arrow_forward_rounded,
+                  color: _mutedColor(context),
+                  size: 20,
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 class AppFooter extends StatelessWidget {
   const AppFooter({super.key});
 
@@ -3146,22 +3362,74 @@ Future<TodaysVerse?> fetchTodaysVerse() async {
   }
 
   // 3. Fallback / English — WEB via bible-api.com
-  final url = 'https://bible-api.com/${Uri.encodeComponent(ref)}?translation=web';
+  // bible-api.com cannot handle cross-chapter ranges, so simplify the ref.
+  final apiRef = _bibleApiRef(ref);
+  final url = 'https://bible-api.com/${Uri.encodeComponent(apiRef)}?translation=web';
   try {
     final res = await http.get(Uri.parse(url)).timeout(const Duration(seconds: 10));
-    if (res.statusCode != 200) return null;
-    final decoded = jsonDecode(res.body) as Map<String, dynamic>;
-    final reference = (decoded['reference'] ?? '').toString().trim();
-    final text = (decoded['text'] ?? '').toString().trim();
-    if (reference.isEmpty || text.isEmpty) return null;
-    return TodaysVerse(reference: reference, text: text, translation: '2026 ZAG ANNUAL BIBLE READING PLAN');
-  } catch (_) {
-    return null;
+    if (res.statusCode == 200) {
+      final decoded = jsonDecode(res.body) as Map<String, dynamic>;
+      final reference = (decoded['reference'] ?? '').toString().trim();
+      final text = (decoded['text'] ?? '').toString().trim();
+      if (reference.isNotEmpty && text.isNotEmpty) {
+        return TodaysVerse(
+          reference: reference,
+          text: text,
+          translation: '2026 ZAG ANNUAL BIBLE READING PLAN',
+        );
+      }
+    }
+  } catch (_) {}
+
+  // 4. Last-resort offline fallback so the card always shows a verse.
+  if (useChichewa) {
+    return TodaysVerse(
+      reference: 'Yohane 3:16',
+      text: 'Pakuti Mulungu anakonda dziko lapansi kotero kuti anapereka '
+          'Mwana wake wamodzi yemwe, kuti aliyense amene akhulupirira iye '
+          'asawonongeke komabe akhale nawo moyo wosatha.',
+      translation: '2026 ZAG ANNUAL BIBLE READING PLAN',
+    );
   }
+  return TodaysVerse(
+    reference: 'John 3:16',
+    text: 'For God so loved the world that he gave his one and only Son, '
+        'that whoever believes in him shall not perish but have eternal life.',
+    translation: '2026 ZAG ANNUAL BIBLE READING PLAN',
+  );
 }
 
-// Converts a human reference like "John 3:16" or "Romans 8:28-29" to
-// an API.Bible passage ID like "JHN.3.16" or "ROM.8.28-ROM.8.29".
+// bible-api.com cannot handle cross-chapter ranges (e.g. "Luke 18:31-19:44"),
+// so for those we fall back to the starting chapter only.
+String _bibleApiRef(String ref) {
+  final cleaned = ref.replaceAll(RegExp(r'\s+'), ' ').trim();
+  final m = RegExp(
+    r'^(.+?)\s+(\d+)(?::(\d+))?\s*-\s*(\d+)(?::(\d+))?$',
+    caseSensitive: false,
+  ).firstMatch(cleaned);
+  if (m == null) return cleaned;
+
+  final book = m.group(1)!.trim();
+  final startCh = m.group(2)!;
+  final startHasVerse = m.group(3) != null;
+  final endHasVerse = m.group(5) != null;
+  final endCh = endHasVerse ? m.group(4)! : startCh;
+
+  // bible-api.com only supports single-chapter references, so any
+  // cross-chapter range (or chapter-only range) falls back to the
+  // starting chapter.
+  final isChapterRange = !startHasVerse && !endHasVerse;
+  if (startCh != endCh || isChapterRange) {
+    return '$book $startCh';
+  }
+  return cleaned;
+}
+
+// Converts a human reference like "John 3:16", "Romans 8:28-29",
+// "Luke 18:31-19:44" (cross-chapter), "Luke 14-15" (chapter range),
+// "Deuteronomy 4:44-" (open-ended) or "2 John" (whole book) to an
+// API.Bible passage ID like "JHN.3.16", "ROM.8.28-ROM.8.29",
+// "LUK.18.31-LUK.19.44", "LUK.14-LUK.15", "DEU.4" or "2JN".
 String? _refToApiBibleId(String ref) {
   const bookMap = {
     'genesis': 'GEN', 'exodus': 'EXO', 'leviticus': 'LEV', 'numbers': 'NUM',
@@ -3185,43 +3453,67 @@ String? _refToApiBibleId(String ref) {
     '3 john': '3JN', 'jude': 'JUD', 'revelation': 'REV',
   };
 
-  // Match: "Book Chapter:Verse" or "Book Chapter:Verse-EndVerse" or "Book Chapter"
-  final match = RegExp(
-    r'^(.+?)\s+(\d+)(?::(\d+)(?:-(\d+))?)?$',
-    caseSensitive: false,
-  ).firstMatch(ref.trim());
-  if (match == null) return null;
+  // Normalise separators: ";" -> ":", tidy spaces around "-", collapse spaces.
+  final cleaned = ref
+      .replaceAll(RegExp(r'\s*;\s*'), ':')
+      .replaceAll(RegExp(r'\s*-\s*'), '-')
+      .replaceAll(RegExp(r'\s+'), ' ')
+      .trim();
+  if (cleaned.isEmpty) return null;
 
-  final bookKey = match.group(1)!.trim().toLowerCase();
-  final chapter = match.group(2)!;
-  final verseStart = match.group(3);
-  final verseEnd = match.group(4);
-  final bookCode = bookMap[bookKey];
+  // Match the longest known book name that prefixes the reference.
+  final lower = cleaned.toLowerCase();
+  String? bookKey;
+  String? bookCode;
+  for (final entry in bookMap.entries) {
+    if (lower.startsWith(entry.key) &&
+        (bookKey == null || entry.key.length > bookKey.length)) {
+      bookKey = entry.key;
+      bookCode = entry.value;
+    }
+  }
   if (bookCode == null) return null;
 
-  if (verseStart == null) {
-    // Whole chapter
-    return '$bookCode.$chapter';
+  var rest = cleaned.substring(bookKey!.length).trim();
+  if (rest.isEmpty) return bookCode; // whole book, e.g. "2 John"
+
+  (String, String?)? parseRefPart(String p) {
+    final m = RegExp(r'^(\d+)(?::(\d+))?$').firstMatch(p.trim());
+    if (m == null) return null;
+    return (m.group(1)!, m.group(2));
   }
-  if (verseEnd == null) {
-    return '$bookCode.$chapter.$verseStart';
+
+  String partId((String, String?) part) {
+    final (ch, vs) = part;
+    return vs == null ? '$bookCode.$ch' : '$bookCode.$ch.$vs';
   }
-  return '$bookCode.$chapter.$verseStart-$bookCode.$chapter.$verseEnd';
+
+  // Open-ended ranges like "Deuteronomy 4:44-" -> whole starting chapter.
+  if (rest.endsWith('-')) {
+    final open = parseRefPart(rest.substring(0, rest.length - 1).trim());
+    return open == null ? bookCode : '$bookCode.${open.$1}';
+  }
+
+  if (!rest.contains('-')) {
+    final part = parseRefPart(rest);
+    return part == null ? null : partId(part);
+  }
+
+  final halves = rest.split('-');
+  if (halves.length != 2) return null;
+  final start = parseRefPart(halves[0]);
+  final end = parseRefPart(halves[1]);
+  if (start == null || end == null) return null;
+  return '${partId(start)}-${partId(end)}';
 }
 
-const _whatsNewKey = 'whats_new_seen_v1.8';
+const _whatsNewKey = 'whats_new_seen_v1.8.9';
 
 const _whatsNewItems = [
-  (icon: Icons.settings_rounded,          text: 'New Settings sidebar — all controls in one place'),
-  (icon: Icons.translate_rounded,         text: 'Bible reading language: choose Chichewa or English'),
-  (icon: Icons.format_size_rounded,       text: 'Global font size control in Settings'),
-  (icon: Icons.dark_mode_rounded,         text: 'Dark/light mode toggle moved to Settings sidebar'),
-  (icon: Icons.share_rounded,             text: 'Share the app directly from Settings'),
-  (icon: Icons.system_update_rounded,     text: 'Update banner — notified when a new version is out'),
-  (icon: Icons.how_to_reg_rounded,        text: 'Membership registration — join ZAG directly in the app'),
-  (icon: Icons.notifications_rounded,     text: 'Daily Bible reading reminders — 3 times a day'),
-  (icon: Icons.church_rounded,            text: 'Church event reminders — Sunday services, Midweek, Homecell'),
-  (icon: Icons.phone_rounded,             text: 'Contact Lead Developer via WhatsApp directly from About'),
+  (icon: Icons.edit_note_rounded,       text: 'App renamed to Zomba Assemblies App'),
+  (icon: Icons.auto_stories_rounded,    text: 'Daily verse now loads for every reading-plan reference'),
+  (icon: Icons.library_music_rounded,   text: 'Nyimbo za Mbukhu card now expands into a 2×2 grid'),
+  (icon: Icons.grid_view_rounded,       text: 'Chichewa & English share a row, Chitumbuka & Favourites the next'),
 ];
 
 Future<void> _maybeShowWhatsNew(BuildContext context) async {
@@ -3392,7 +3684,7 @@ class _WhatsNewDialog extends StatelessWidget {
 }
 const _versionJsonUrl =
     'https://raw.githubusercontent.com/zagmedia/zaghymn/main/version.json';
-const _apkPureUrl = 'https://apkpure.com/zag-nyimbo-za-chitsitsimutso/com.zagmedia.zaghymn';
+const _apkPureUrl = 'https://apkpure.com/zag-nyimbo-za-chitsitsimutso/com.zagmedia.divineoasis';
 
 Future<({String version, String notes})?> fetchLatestVersion() async {
   try {
@@ -4093,6 +4385,158 @@ class _RegistrationWebViewScreenState extends State<RegistrationWebViewScreen> {
               child: CircularProgressIndicator(),
             ),
         ],
+      ),
+    );
+  }
+}
+
+// ── Announcements Screen ─────────────────────────────────────────────────────
+class AnnouncementsScreen extends StatelessWidget {
+  const AnnouncementsScreen({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    final dark = _isDark(context);
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('Announcements'),
+        backgroundColor: dark ? _night : _paper,
+        foregroundColor: _textColor(context),
+        elevation: 0,
+      ),
+      body: StreamBuilder<QuerySnapshot>(
+        stream: FirebaseFirestore.instance
+            .collection('announcements')
+            .orderBy('timestamp', descending: true)
+            .snapshots(),
+        builder: (context, snapshot) {
+          if (snapshot.hasError) {
+            return Center(
+              child: Padding(
+                padding: const EdgeInsets.all(24),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Icon(Icons.wifi_off_rounded, size: 48, color: _muted),
+                    const SizedBox(height: 16),
+                    Text(
+                      'Could not load announcements',
+                      style: TextStyle(color: _textColor(context), fontWeight: FontWeight.w800),
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      'Please check your internet connection and try again.',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(color: _mutedColor(context)),
+                    ),
+                  ],
+                ),
+              ),
+            );
+          }
+
+          if (snapshot.connectionState == ConnectionState.waiting) {
+            return const Center(child: CircularProgressIndicator());
+          }
+
+          final docs = snapshot.data?.docs ?? [];
+          if (docs.isEmpty) {
+            return Center(
+              child: Padding(
+                padding: const EdgeInsets.all(24),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(Icons.campaign_rounded, size: 48, color: _mutedColor(context)),
+                    const SizedBox(height: 16),
+                    Text(
+                      'No announcements yet',
+                      style: TextStyle(color: _textColor(context), fontWeight: FontWeight.w800),
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      'Check back later for the latest church news and updates.',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(color: _mutedColor(context)),
+                    ),
+                  ],
+                ),
+              ),
+            );
+          }
+
+          return ListView.builder(
+            padding: const EdgeInsets.fromLTRB(18, 10, 18, 26),
+            itemCount: docs.length,
+            itemBuilder: (context, index) {
+              final data = docs[index].data() as Map<String, dynamic>;
+              final title = (data['title'] ?? '').toString().trim();
+              final body = (data['body'] ?? '').toString().trim();
+              final timestamp = data['timestamp'] as Timestamp?;
+              final date = timestamp?.toDate();
+
+              return Card(
+                margin: const EdgeInsets.only(bottom: 12),
+                elevation: 0,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                  side: BorderSide(color: _lineColor(context)),
+                ),
+                child: Padding(
+                  padding: const EdgeInsets.all(16),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                            decoration: BoxDecoration(
+                              color: _gold.withValues(alpha: 0.12),
+                              borderRadius: BorderRadius.circular(20),
+                              border: Border.all(color: _gold.withValues(alpha: 0.30)),
+                            ),
+                            child: Text(
+                              date != null
+                                  ? '${date.day.toString().padLeft(2, '0')}/${date.month.toString().padLeft(2, '0')}/${date.year}'
+                                  : 'Announcement',
+                              style: TextStyle(
+                                color: dark ? _gold : _navy,
+                                fontWeight: FontWeight.w800,
+                                fontSize: 10,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 10),
+                      Text(
+                        title,
+                        style: TextStyle(
+                          color: _textColor(context),
+                          fontWeight: FontWeight.w900,
+                          fontSize: 16,
+                          height: 1.2,
+                        ),
+                      ),
+                      if (body.isNotEmpty) ...[
+                        const SizedBox(height: 8),
+                        Text(
+                          body,
+                          style: TextStyle(
+                            color: _mutedColor(context),
+                            fontSize: 14,
+                            height: 1.5,
+                          ),
+                        ),
+                      ],
+                    ],
+                  ),
+                ),
+              );
+            },
+          );
+        },
       ),
     );
   }

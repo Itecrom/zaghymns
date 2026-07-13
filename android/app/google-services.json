@@ -1,21 +1,21 @@
 {
   "project_info": {
-    "project_number": "928634012379",
-    "project_id": "zaghymns",
-    "storage_bucket": "zaghymns.firebasestorage.app"
+    "project_number": "38809768635",
+    "project_id": "zomba-assemblies-of-god",
+    "storage_bucket": "zomba-assemblies-of-god.firebasestorage.app"
   },
   "client": [
     {
       "client_info": {
-        "mobilesdk_app_id": "1:928634012379:android:8720fa28d73249c58402fe",
+        "mobilesdk_app_id": "1:38809768635:android:b3ef56a31cef92129b4f9e",
         "android_client_info": {
-          "package_name": "com.zagmedia.zaghymn"
+          "package_name": "com.zagmedia.divineoasis"
         }
       },
       "oauth_client": [],
       "api_key": [
         {
-          "current_key": "AIzaSyBPiYxlyvxC5Dix3_VUuphMXKuAInNbBoo"
+          "current_key": "AIzaSyB_pnsPrS2Dkkt9xYx-m7N-EY3kBNvYG4Y"
         }
       ],
       "services": {
